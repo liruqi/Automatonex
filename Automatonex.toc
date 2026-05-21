@@ -1,4 +1,4 @@
-﻿## Interface: 11200
+## Interface: 11200
 ## Title: |cffFF4500[C]|R[增强] |rAutomaton工具箱强化版
 ## Title-zhCN: |cffFF4500[C]|R[增强] |rAutomaton工具箱强化版
 ## Notes: |CFF33AAFFAutomaton|R|N自动完成某一些功能。|N比如：自动更换磨刀石/赞扎、自动下马、自动站立等，/auto设置。
@@ -13,7 +13,7 @@
 ## X-Commands: /auto, /automaton
 ## OptionalDeps: Ace2, AbacusLib, GratuityLib, SpecialEventsEmbed
 ## SavedVariables: AutomatonDB
-## SavedVariablesPerCharacter: AutomatonDBChar STradeDB
+## SavedVariablesPerCharacter: AutomatonDBChar
 
 Core.lua
 Modules\KeepOnline.lua
@@ -47,7 +47,6 @@ Modules\ErrClear.lua
 Modules\Superwow.lua
 Modules\CancelTiger.lua
 Modules\NewLevelFrame.lua
-Modules\sTrade.lua
 Modules\WorldBuffs.lua
 Modules\Discard.lua
 Modules\AutoShout.lua
