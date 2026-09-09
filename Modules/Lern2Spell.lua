@@ -1,5 +1,3 @@
--- 使用 assert 函数进行条件检查。如果 Automaton 变量为 nil，则会抛出错误并显示 "Automaton not found!" 信息
--- 通常用于确保某个关键模块或对象已经被正确加载和定义
 assert(Automaton, "Automaton not found!")
 
 ----------------------------
@@ -16,48 +14,164 @@ L:RegisterTranslations("zhCN", function() return {
 --      Are you local?      --
 ------------------------------
 
--- AceLibrary("SpecialEvents-LearnSpell-2.0") -- Majick line for InBed
 local gratuity = AceLibrary("Gratuity-2.0")
+
+----------------------------------
+--  已学物品标记：颜色与工具提示  --
+----------------------------------
+
+local COLOR = { r = 0.1, g = 1.0, b = 0.1 }
+
+local tooltip = CreateFrame('GameTooltip')
+tooltip:SetOwner(WorldFrame, 'ANCHOR_NONE')
+
+local IsAlreadyKnown, IsQuest
+do
+    local lines = {}
+    for i = 1, 40 do
+        lines[i] = tooltip:CreateFontString()
+        tooltip:AddFontStrings(lines[i], tooltip:CreateFontString())
+    end
+
+    function IsAlreadyKnown(itemLink)
+        if (not itemLink) then return end
+
+        tooltip:ClearLines()
+        local item = string.gsub(itemLink, ".*(item:%d+:%d+:%d+:%d+).*", "%1", 1)
+        tooltip:SetHyperlink(item)
+        for i = 1, tooltip:NumLines() do
+            if (lines[i]:GetText() == ITEM_SPELL_KNOWN) then
+                return true
+            end
+        end
+    end
+
+    function IsQuest(itemLink)
+        if (not itemLink) then return end
+
+        tooltip:ClearLines()
+        local item = string.gsub(itemLink, ".*(item:%d+:%d+:%d+:%d+).*", "%1", 1)
+        tooltip:SetHyperlink(item)
+        for i = 1, tooltip:NumLines() do
+            if (lines[i]:GetText() == ITEM_BIND_QUEST) then
+                return true
+            end
+        end
+    end
+end
 
 ----------------------------------
 --      Module Declaration      --
 ----------------------------------
--- 从 Automaton 中创建一个名为 "Lern2Spell" 的新模块，并将其赋值给 Automaton_Lern2Spell 变量
+
 local Automaton_Lern2Spell = Automaton:NewModule("Lern2Spell")
--- 为该模块设置一个可读的名称，用于界面显示或日志记录等，这里名称为 "动作条新学技能更新"
-Automaton_Lern2Spell.modulename = "动作条新学技能更新"
--- 为该模块设置一个描述信息，用于说明该模块的功能，这里描述为 "新学技能后，自动把动作条上现有技能更新到新学的最高等级"
-Automaton_Lern2Spell.moduledesc = "新学技能后，自动把动作条上现有技能更新到新学的最高等级"
--- 初始化该模块的选项表，后续可用于存储和管理模块的配置选项
-Automaton_Lern2Spell.options = {}
+Automaton_Lern2Spell.modulename = "技能与物品管理"
+Automaton_Lern2Spell.moduledesc = "新学技能后自动更新动作条到最高等级，并在拍卖行/商人界面标记已学物品和任务物品"
+Automaton_Lern2Spell.options = {
+    upgradeSpells = {
+        type = "toggle",
+        name = "技能更新",
+        desc = "新学技能后自动更新动作条到最高等级",
+        order = 2,
+        get = function() return Automaton_Lern2Spell.db.profile.upgradeSpells end,
+        set = function(v) Automaton_Lern2Spell.db.profile.upgradeSpells = v end,
+    },
+    markKnown = {
+        type = "toggle",
+        name = "已学物品标记",
+        desc = "在拍卖行/商人界面标记已学物品和任务物品",
+        order = 3,
+        get = function() return Automaton_Lern2Spell.db.profile.markKnown end,
+        set = function(v) Automaton_Lern2Spell.db.profile.markKnown = v end,
+    },
+}
 
 ------------------------------
 --      Initialization      --
 ------------------------------
--- 定义模块的初始化函数，当模块被加载时会调用此函数
+
 function Automaton_Lern2Spell:OnInitialize()
-    -- 调用模块的 RegisterOptions 方法，将之前定义的选项表 self.options 进行注册
-    -- 通常用于将模块的配置选项集成到主配置系统中
+    self.db = Automaton:AcquireDBNamespace("Lern2Spell")
+    Automaton:RegisterDefaults("Lern2Spell", "profile", {
+        upgradeSpells = true,
+        markKnown = true,
+    })
     self:RegisterOptions(self.options)
 end
 
--- 定义模块启用时调用的函数，当模块被启用时会执行此函数中的逻辑
 function Automaton_Lern2Spell:OnEnable()
-    -- 加载 AceLibrary 中的 Gratuity-2.0 库，并将其赋值给 self.gratuity 变量
-    -- 这个库可能用于获取动作条上技能的详细信息
+    -- 技能更新：加载 Gratuity 库，注册新学技能事件
     self.gratuity = gratuity
-    -- 注册 "SpecialEvents_LearnedSpell" 事件，当该事件触发时，模块会调用相应的处理函数
     self:RegisterEvent("SpecialEvents_LearnedSpell")
+
+    -- 已学物品标记：拍卖行钩子
+    hooksecurefunc("AuctionFrame_LoadUI", function()
+        if AuctionFrameBrowse_Update then
+            hooksecurefunc("AuctionFrameBrowse_Update", function()
+                if not Automaton_Lern2Spell.db.profile.markKnown then return end
+                local numItems = GetNumAuctionItems('list')
+                local offset = FauxScrollFrame_GetOffset(BrowseScrollFrame)
+
+                for i = 1, NUM_BROWSE_TO_DISPLAY do
+                    local index = offset + i
+                    if (index > numItems) then return end
+
+                    local texture = _G['BrowseButton' .. i .. 'ItemIconTexture']
+                    if (texture and texture:IsShown()) then
+                        local _, _, _, _, canUse = GetAuctionItemInfo('list', index)
+                        if (canUse and IsAlreadyKnown(GetAuctionItemLink('list', index))) then
+                            texture:SetVertexColor(COLOR.r, COLOR.g, COLOR.b)
+                        end
+                    end
+                end
+            end)
+        end
+    end)
+
+    -- 已学物品标记：商人钩子
+    hooksecurefunc("MerchantFrame_Update", function()
+        if not Automaton_Lern2Spell.db.profile.markKnown then return end
+        local numItems = GetMerchantNumItems()
+
+        for i = 1, MERCHANT_ITEMS_PER_PAGE do
+            local index = (MerchantFrame.page - 1) * MERCHANT_ITEMS_PER_PAGE + i
+            if (index > numItems) then return end
+
+            local merchantButton = _G['MerchantItem' .. i]
+            local itemButton = _G['MerchantItem' .. i .. 'ItemButton']
+            if (itemButton and itemButton:IsShown()) then
+                local _, _, _, _, numAvailable, isUsable = GetMerchantItemInfo(index)
+                if (isUsable and IsAlreadyKnown(GetMerchantItemLink(index))) then
+                    local r, g, b = COLOR.r, COLOR.g, COLOR.b
+                    if (numAvailable == 0) then
+                        r, g, b = r * 0.5, g * 0.5, b * 0.5
+                    end
+                    SetItemButtonNameFrameVertexColor(merchantButton, r, g, b)
+                    SetItemButtonSlotVertexColor(merchantButton, r, g, b)
+                    SetItemButtonTextureVertexColor(itemButton, r, g, b)
+                    SetItemButtonNormalTextureVertexColor(itemButton, r, g, b)
+                end
+                if (isUsable and IsQuest(GetMerchantItemLink(index))) then
+                    SetItemButtonNameFrameVertexColor(merchantButton, 1, 1, 0)
+                    SetItemButtonSlotVertexColor(merchantButton, 1, 1, 0)
+                    SetItemButtonTextureVertexColor(itemButton, 1, 1, 0)
+                    SetItemButtonNormalTextureVertexColor(itemButton, 1, 1, 0)
+                end
+            end
+        end
+    end)
 end
 
--- 定义模块禁用时调用的函数，当模块被禁用时会执行此函数中的逻辑
 function Automaton_Lern2Spell:OnDisable()
-    -- 注销模块注册的所有事件，确保模块禁用后不再响应任何事件
     self:UnregisterAllEvents()
 end
 
--- 定义 "SpecialEvents_LearnedSpell" 事件的处理函数，当玩家学习新技能时会触发此函数
+------------------------------
+--      技能更新逻辑        --
+------------------------------
+
 function Automaton_Lern2Spell:SpecialEvents_LearnedSpell(spell, rank)
+    if not self.db.profile.upgradeSpells then return end
     for btn = 1, 120 do
         local n, r = self:ActionIsSpell(btn)
         if n and n == spell and ((r or "") ~= rank) then
@@ -76,7 +190,6 @@ function Automaton_Lern2Spell:SpecialEvents_LearnedSpell(spell, rank)
     end
 end
 
--- 定义一个方法，用于获取指定技能和等级的索引
 function Automaton_Lern2Spell:GetSpellIndex(spell, rank)
     assert(spell, "No spell passed")
 
@@ -88,7 +201,6 @@ function Automaton_Lern2Spell:GetSpellIndex(spell, rank)
     until not n
 end
 
--- 定义一个方法，用于检查指定动作条按钮上的动作是否为技能
 function Automaton_Lern2Spell:ActionIsSpell(id)
     if not id or GetActionText(id) then return end
 

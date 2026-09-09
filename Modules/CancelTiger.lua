@@ -60,7 +60,7 @@ end
 -- 取消猎豹守护/豹群守护（如果存在）
 local function CancelTigerBuff()
     -- 如果玩家在坐骑上，不取消（避免误操作）
-    if IsMounted and UnitIsMounted("player") then return end
+    if type(UnitIsMounted) == "function" and UnitIsMounted("player") then return end
 
     for i = 0, 31 do
         gratuity:SetPlayerBuff(i)

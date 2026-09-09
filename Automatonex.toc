@@ -1,9 +1,9 @@
-## Interface: 11200
+﻿## Interface: 11200
 ## Title: |cffFF4500[C]|R[增强] |rAutomaton工具箱强化版
 ## Title-zhCN: |cffFF4500[C]|R[增强] |rAutomaton工具箱强化版
 ## Notes: |CFF33AAFFAutomaton|R|N自动完成某一些功能。|N比如：自动更换磨刀石/赞扎、自动下马、自动站立等，/auto设置。
 ## Notes-zhCN: |CFF33AAFFAutomaton|R|N自动完成某一些功能。|N比如：自动更换磨刀石/赞扎、自动下马、自动站立等，/auto设置。
-## Version: 1.1.2
+## Version: 9.1.2
 ## Author: weab,Artur91425,黑猫插件,可可慕斯，最爱
 ## X-Category: Interface Enhancements
 ## X-Credits: gxam (co-author), ssayclub (koKR translations), Lichery (ruRU translations)
@@ -13,12 +13,16 @@
 ## X-Commands: /auto, /automaton
 ## OptionalDeps: Ace2, AbacusLib, GratuityLib, SpecialEventsEmbed
 ## SavedVariables: AutomatonDB
-## SavedVariablesPerCharacter: AutomatonDBChar
+## SavedVariablesPerCharacter: AutomatonDBChar STradeDB
 
 Core.lua
+Locale\T.lua
 Modules\KeepOnline.lua
 Modules\Filter.lua
 Modules\Follow.lua
+Modules\Gossip\Locale.lua
+Modules\Gossip\Gossip.lua
+Modules\Gossip\GossipData.lua
 Modules\Group.lua
 Modules\Invite.lua
 Modules\Loner.lua
@@ -38,51 +42,46 @@ Modules\CancelBuff.lua
 Modules\Lern2Spell.lua
 Modules\AlertCombat.lua
 Modules\QuestAnnouncer.lua
+Modules\QuestAutomation.lua
 Modules\Trainer.lua
+Modules\Tooltip.lua
 Modules\pfQuestSendLink.lua
-Modules\ClearCache.lua
 Modules\SelfName.lua
 Modules\ShaguStance.lua
 Modules\ErrClear.lua
 Modules\Superwow.lua
 Modules\CancelTiger.lua
 Modules\NewLevelFrame.lua
+Modules\sTrade.lua
 Modules\WorldBuffs.lua
 Modules\Discard.lua
+Modules\HCFilter.lua
 Modules\AutoShout.lua
 Modules\Unlock.lua
 Modules\1invall.lua
+Modules\ClearCache.lua
 Modules\AutoOpenBag.lua
-Modules\OmniCC.lua
+Modules\ZoneInfo.lua
+Modules\AutoNeed.lua
+Modules\ExpShow.lua
 Modules\Dismount.lua
 Modules\Unshapeshift.lua
 Modules\RandomMount.lua
 Modules\S_AlreadyKnown.lua
-Modules\ExpBar.lua
+Modules\FreeBagSlots.lua
+Modules\Boomtime.lua
 Modules\DrunkTracker.lua
-Modules\TSTargetMark.lua
-Modules\AutoNeed.lua
+Modules\KneelToQueen.lua
+Modules\MasterLootRemind.lua
+Modules\PicoPoisons.lua
+Modules\QuestHook.lua
+Modules\S_ItemLinktoenUS.lua
 Modules\SendRollItem.lua
 Modules\SpellBookTag.lua
-Modules\shiqu.lua
-Modules\QuestAutomation.lua
-Modules\HideActionBarEndCaps.lua
-Modules\S_ItemLinktoenUS.lua
-Modules\AutoDB.lua
 Modules\ProcDoc.lua
-Modules\MasterLootRemind.lua
-Modules\InterPlayerLink.lua
-Modules\Range.lua
-Modules\Summon.lua
-Modules\S_ActionCount.lua
-Modules\Boomtime.lua
-Modules\KneelToQueen.lua
-Modules\jtlk.lua
-Modules\PicoPoisons.lua
-Modules\Xguild.lua
-Modules\RangeController.lua
-
-Plubics\CleanChat\CleanChat.xml
+Modules\ToggleGather.lua
+Modules\shiqu.lua
+Modules\zTip.lua
 
 
 

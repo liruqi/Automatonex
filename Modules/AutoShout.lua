@@ -265,6 +265,7 @@ end
 function Automaton_AutoShout:OnInitialize()
 	self.db = Automaton:AcquireDBNamespace("AutoShout")
 	Automaton:RegisterDefaults("AutoShout", "profile", {
+		disabled = true,  -- 模块默认禁用
 		shoutEnabled = false,  -- 自动喊话默认关闭
 		messages = {
 			default = "{item1}自动喊话测试，乌龟服真好玩",

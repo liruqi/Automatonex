@@ -131,7 +131,7 @@ Automaton_Discard.options = {
 function Automaton_Discard:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("Discard")
     Automaton:RegisterDefaults("Discard", "profile", {
-        disabled = false,
+        disabled = true,
         discard = {},
         ver = 0,
         printEnabled = true,  -- 新增默认启用打印功能

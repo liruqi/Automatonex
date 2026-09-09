@@ -12,7 +12,7 @@ function Automaton_pfQuestSendLink:OnInitialize()
   
 	self.db = Automaton:AcquireDBNamespace("pfQuestSendLink")
 	Automaton:RegisterDefaults("pfQuestSendLink", "profile", {
-		disabled = true,
+		disabled = false, -- 模块默认启用（任务英文链接）
 	})
 	Automaton:SetDisabledAsDefault(self, "pfQuestSendLink")
 	self:RegisterOptions(self.options)

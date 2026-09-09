@@ -37,16 +37,19 @@ Automaton_Group.moduledesc = L["Options for accepting or declining group invites
 Automaton_Group.options = {
 	who = {
 		type = 'toggle', name = L["Who"], desc = L["Perform a /who on incoming party invites from unknown sources."],
+		order = 2,
 		get = function() return Automaton_Group.db.profile.who end,
 		set = function(v) Automaton_Group.db.profile.who = v end,
 	},
 	decline = {
 		type = 'toggle', name = L["Decline"], desc = L["Decline party invites from unknown sources."],
+		order = 3,
 		get = function() return Automaton_Group.db.profile.decline end,
 		set = function(v) Automaton_Group.db.profile.decline = v end,
 	},
 	delay = {
 		type = 'toggle', name = L["Delay"], desc = L["With this option enabled, automatic joining or declining is delayed for 55 seconds."],
+		order = 4,
 		get = function() return Automaton_Group.db.profile.delay end,
 		set = function(v) Automaton_Group.db.profile.delay = v end,
 	}

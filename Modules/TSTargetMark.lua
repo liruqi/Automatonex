@@ -6,7 +6,7 @@ assert(Automaton, "Automaton not found!")
 
 local Automaton_TSTargetMark = Automaton:NewModule("TSTargetMark")
 Automaton_TSTargetMark.modulename = "目标标记箭头"
-Automaton_TSTargetMark.moduledesc = "在目标姓名板上方显示标记箭头，支持浮动动画效果"
+Automaton_TSTargetMark.moduledesc = "在目标姓名板上方显示标记箭头，支持浮动动画效果，并依据朝向变色"
 
 ------------------------------
 --      Local Variables      --
@@ -32,10 +32,20 @@ local FLOAT_CONFIG = {
     smooth = true,          -- 是否使用平滑动画
 }
 
+-- 朝向颜色配置
+local FACING_COLOR_ENABLED = true
+local FRONT_COLOR = {1, 0, 0, 1}   -- 红色（正面）
+local BACK_COLOR  = {0, 1, 0, 1}   -- 绿色（背面）
+local DEFAULT_COLOR = {1, 1, 1, 1} -- 白色（无变化）
+
 local MediaPath = "Interface\\AddOns\\Automatonex\\TGA\\"
 local TargetArrow       -- 箭头图片材质（动态初始化）
 local TargetArrowL = MediaPath .. "Arrow26_左" -- 特殊模式左箭头
 local TargetArrowR = MediaPath .. "Arrow26_右" -- 特殊模式右箭头
+
+-- 自身高亮相关变量
+local selfHighlightIcon = nil
+local SELF_HIGHLIGHT_TEXTURE = MediaPath .. "SELF.TGA"  -- 需要将 SELF.TGA 放入 Automatonex\TGA 目录
 
 local parentcount = 0
 local prevcount = 0
@@ -62,6 +72,34 @@ local function IsNamePlateFrame(frame)
         return false
     end
     return true
+end
+
+-- 获取目标朝向状态（正面/背面）
+-- UnitXP 是一个函数，调用方式：UnitXP("behind", "player", "target")
+local function GetTargetFacingStatus()
+    if type(UnitXP) ~= "function" then
+        return nil
+    end
+    local success, behind = pcall(UnitXP, "behind", "player", "target")
+    if success then
+        return behind and "back" or "front"
+    end
+    return nil
+end
+
+-- 设置箭头颜色（普通模式）
+local function SetArrowColor(arrow, status)
+    if not arrow then return end
+    if not FACING_COLOR_ENABLED then
+        arrow:SetVertexColor(DEFAULT_COLOR[1], DEFAULT_COLOR[2], DEFAULT_COLOR[3], DEFAULT_COLOR[4])
+        return
+    end
+    if status == "back" then
+        arrow:SetVertexColor(BACK_COLOR[1], BACK_COLOR[2], BACK_COLOR[3], BACK_COLOR[4])
+    else
+        -- 正面或未知状态：使用默认颜色（白色），显示纹理原始颜色
+        arrow:SetVertexColor(DEFAULT_COLOR[1], DEFAULT_COLOR[2], DEFAULT_COLOR[3], DEFAULT_COLOR[4])
+    end
 end
 
 -- 浮动动画更新函数
@@ -121,6 +159,50 @@ local function UpdateFloatAnimation(elapsed)
             namePlate.ArrowR:SetPoint("Left", namePlate.name, "Right", newX_R, OFFSET_Y_R)
         end
     end
+end
+
+-- 自身高亮图标初始化
+local function InitializeSelfHighlightIcon()
+    if not selfHighlightIcon then
+        selfHighlightIcon = CreateFrame("Frame", "TSTargetMarkSelfHighlight", UIParent)
+        local size = Automaton_TSTargetMark.db.profile.selfHighlightSize or 200
+        selfHighlightIcon:SetWidth(size)
+        selfHighlightIcon:SetHeight(size)
+        selfHighlightIcon:SetPoint("CENTER", 0, -30)  -- 临时位置，后面会根据偏移配置重新设置
+        local texture = selfHighlightIcon:CreateTexture(nil, "ARTWORK")
+        texture:SetAllPoints()
+        texture:SetTexture(SELF_HIGHLIGHT_TEXTURE)
+        texture:SetBlendMode("ADD")
+        texture:SetAlpha(0.8)
+        selfHighlightIcon:Hide()
+    end
+end
+
+-- 更新自身高亮图标（显示/隐藏、大小、位置）
+local function UpdateSelfHighlight()
+    if not Automaton_TSTargetMark.db.profile.selfHighlightEnabled then
+        if selfHighlightIcon then
+            selfHighlightIcon:Hide()
+        end
+        return
+    end
+    
+    InitializeSelfHighlightIcon()
+    
+    -- 更新大小
+    local size = Automaton_TSTargetMark.db.profile.selfHighlightSize
+    if size and size ~= selfHighlightIcon:GetWidth() then
+        selfHighlightIcon:SetWidth(size)
+        selfHighlightIcon:SetHeight(size)
+    end
+    
+    -- 更新位置偏移
+    local offsetX = Automaton_TSTargetMark.db.profile.selfHighlightOffsetX or 0
+    local offsetY = Automaton_TSTargetMark.db.profile.selfHighlightOffsetY or -30
+    selfHighlightIcon:ClearAllPoints()
+    selfHighlightIcon:SetPoint("CENTER", UIParent, "CENTER", offsetX, offsetY)
+    
+    selfHighlightIcon:Show()
 end
 
 -- 普通模式函数
@@ -184,6 +266,7 @@ local function UpdateAllArrows()
     if not Automaton_TSTargetMark.db then return end
     
     local specialMode = Automaton_TSTargetMark.db.profile.specialMode
+    local facingStatus = GetTargetFacingStatus()  -- 获取朝向状态
     
     if (ShaguPlates and ShaguPlates.nameplates) or (pfUI and pfUI.nameplates) then
         local index = 1
@@ -209,6 +292,9 @@ local function UpdateAllArrows()
                 end
                 if pfNamePlate.istarget then
                     SpecialArrowShow(pfNamePlate)
+                    -- 设置左右箭头颜色
+                    SetArrowColor(pfNamePlate.ArrowL, facingStatus)
+                    SetArrowColor(pfNamePlate.ArrowR, facingStatus)
                 else
                     SpecialArrowHide(pfNamePlate)
                 end
@@ -225,6 +311,8 @@ local function UpdateAllArrows()
                 end
                 if pfNamePlate.istarget then
                     NormalArrowShow(pfNamePlate)
+                    -- 设置箭头颜色
+                    SetArrowColor(pfNamePlate.Arrow, facingStatus)
                 else
                     NormalArrowHide(pfNamePlate)
                 end
@@ -265,6 +353,8 @@ local function UpdateAllArrows()
                 end
                 if UnitExists("target") and HealthBar:GetAlpha() == 1 then
                     SpecialArrowShow(namePlate)
+                    SetArrowColor(namePlate.ArrowL, facingStatus)
+                    SetArrowColor(namePlate.ArrowR, facingStatus)
                 else
                     SpecialArrowHide(namePlate)
                 end
@@ -281,6 +371,7 @@ local function UpdateAllArrows()
                 end
                 if UnitExists("target") and HealthBar:GetAlpha() == 1 then
                     NormalArrowShow(namePlate)
+                    SetArrowColor(namePlate.Arrow, facingStatus)
                 else
                     NormalArrowHide(namePlate)
                 end
@@ -290,10 +381,16 @@ local function UpdateAllArrows()
 end
 
 Automaton_TSTargetMark.options = {
+    header1 = {
+        type = "header",
+        name = "箭头外观",
+        order = 10,
+    },
     specialMode = {
         type = "toggle",
         name = "特别模式",
         desc = "启用双箭头模式（左右各一个），不可调整",
+        order = 11,
         get = function() return Automaton_TSTargetMark.db.profile.specialMode end,
         set = function(v)
             Automaton_TSTargetMark.db.profile.specialMode = v
@@ -305,6 +402,7 @@ Automaton_TSTargetMark.options = {
         type = "range",
         name = "箭头大小",
         desc = "设置目标箭头的显示大小",
+        order = 12,
         min = 30,
         max = 100,
         step = 1,
@@ -336,6 +434,7 @@ Automaton_TSTargetMark.options = {
         type = "range",
         name = "X轴偏移",
         desc = "设置箭头在X轴方向的偏移量",
+        order = 14,
         min = -50,
         max = 50,
         step = 1,
@@ -349,6 +448,7 @@ Automaton_TSTargetMark.options = {
         type = "range",
         name = "Y轴偏移",
         desc = "设置箭头在Y轴方向的偏移量",
+        order = 15,
         min = 0,
         max = 50,
         step = 1,
@@ -362,6 +462,7 @@ Automaton_TSTargetMark.options = {
         type = "range",
         name = "箭头样式",
         desc = "选择箭头的显示样式（0-25）",
+        order = 13,
         min = 0,
         max = 25,
         step = 1,
@@ -388,10 +489,16 @@ Automaton_TSTargetMark.options = {
             end
         end
     },
+    header2 = {
+        type = "header",
+        name = "浮动动画",
+        order = 20,
+    },
     floatEnabled = {
         type = "toggle",
         name = "启用浮动动画",
         desc = "启用箭头浮动动画效果",
+        order = 21,
         get = function() return Automaton_TSTargetMark.db.profile.floatEnabled end,
         set = function(v)
             Automaton_TSTargetMark.db.profile.floatEnabled = v
@@ -402,6 +509,7 @@ Automaton_TSTargetMark.options = {
         type = "range",
         name = "浮动速度",
         desc = "设置箭头浮动动画的速度",
+        order = 22,
         min = 1,
         max = 10,
         step = 0.5,
@@ -415,6 +523,7 @@ Automaton_TSTargetMark.options = {
         type = "range",
         name = "浮动幅度",
         desc = "设置箭头浮动的幅度（像素）",
+        order = 23,
         min = 5,
         max = 30,
         step = 1,
@@ -428,17 +537,106 @@ Automaton_TSTargetMark.options = {
         type = "toggle",
         name = "平滑动画",
         desc = "启用平滑的浮动动画效果",
+        order = 24,
         get = function() return Automaton_TSTargetMark.db.profile.floatSmooth end,
         set = function(v)
             Automaton_TSTargetMark.db.profile.floatSmooth = v
             FLOAT_CONFIG.smooth = v
         end
-    }
+    },
+    header3 = {
+        type = "header",
+        name = "自身高亮",
+        order = 30,
+    },
+    -- 自身高亮配置
+    selfHighlightEnabled = {
+        type = "toggle",
+        name = "启用自身高亮",
+        desc = "在屏幕中央显示自身高亮图标",
+        order = 31,
+        get = function() return Automaton_TSTargetMark.db.profile.selfHighlightEnabled end,
+        set = function(v)
+            Automaton_TSTargetMark.db.profile.selfHighlightEnabled = v
+            if not v and selfHighlightIcon then
+                selfHighlightIcon:Hide()
+            elseif v then
+                UpdateSelfHighlight()
+            end
+        end
+    },
+    selfHighlightSize = {
+        type = "range",
+        name = "高亮图标大小",
+        desc = "设置自身高亮图标的大小",
+        order = 32,
+        min = 50,
+        max = 400,
+        step = 5,
+        get = function() return Automaton_TSTargetMark.db.profile.selfHighlightSize end,
+        set = function(v)
+            Automaton_TSTargetMark.db.profile.selfHighlightSize = v
+            if selfHighlightIcon then
+                selfHighlightIcon:SetWidth(v)
+                selfHighlightIcon:SetHeight(v)
+            end
+        end
+    },
+    selfHighlightOffsetX = {
+        type = "range",
+        name = "高亮图标X偏移",
+        desc = "设置自身高亮图标在X轴方向的偏移",
+        order = 33,
+        min = -500,
+        max = 500,
+        step = 5,
+        get = function() return Automaton_TSTargetMark.db.profile.selfHighlightOffsetX end,
+        set = function(v)
+            Automaton_TSTargetMark.db.profile.selfHighlightOffsetX = v
+            if selfHighlightIcon then
+                local offsetY = Automaton_TSTargetMark.db.profile.selfHighlightOffsetY or -30
+                selfHighlightIcon:ClearAllPoints()
+                selfHighlightIcon:SetPoint("CENTER", UIParent, "CENTER", v, offsetY)
+            end
+        end
+    },
+    selfHighlightOffsetY = {
+        type = "range",
+        name = "高亮图标Y偏移",
+        desc = "设置自身高亮图标在Y轴方向的偏移",
+        order = 34,
+        min = -500,
+        max = 500,
+        step = 5,
+        get = function() return Automaton_TSTargetMark.db.profile.selfHighlightOffsetY end,
+        set = function(v)
+            Automaton_TSTargetMark.db.profile.selfHighlightOffsetY = v
+            if selfHighlightIcon then
+                local offsetX = Automaton_TSTargetMark.db.profile.selfHighlightOffsetX or 0
+                selfHighlightIcon:ClearAllPoints()
+                selfHighlightIcon:SetPoint("CENTER", UIParent, "CENTER", offsetX, v)
+            end
+        end
+    },
+    -- 新增：朝向颜色开关
+    facingColorEnabled = {
+        type = "toggle",
+        name = "启用朝向颜色",
+        desc = "根据目标朝向自动改变箭头颜色（正面红、背面绿）",
+        order = 16,
+        get = function() return Automaton_TSTargetMark.db.profile.facingColorEnabled end,
+        set = function(v)
+            Automaton_TSTargetMark.db.profile.facingColorEnabled = v
+            FACING_COLOR_ENABLED = v
+            UpdateAllArrows()  -- 立即刷新颜色
+        end
+    },
 }
 
 local function Arrow_OnUpdate(elapsed)
     UpdateAllArrows()
     UpdateFloatAnimation(elapsed)
+    UpdateSelfHighlight()
 end
 
 -- 添加浮动动画控制命令
@@ -537,7 +735,14 @@ function Automaton_TSTargetMark:OnInitialize()
         floatEnabled = false, -- 默认禁用浮动动画
         floatSpeed = 3,
         floatAmplitude = 15,
-        floatSmooth = true
+        floatSmooth = true,
+        -- 自身高亮默认值
+        selfHighlightEnabled = false,
+        selfHighlightSize = 200,
+        selfHighlightOffsetX = 0,
+        selfHighlightOffsetY = -30,
+        -- 朝向颜色默认值
+        facingColorEnabled = true,
     })
     Automaton:SetDisabledAsDefault(self, "TSTargetMark")
     
@@ -552,6 +757,9 @@ function Automaton_TSTargetMark:OnInitialize()
     FLOAT_CONFIG.amplitude = self.db.profile.floatAmplitude
     FLOAT_CONFIG.smooth = self.db.profile.floatSmooth
     
+    -- 初始化朝向颜色配置
+    FACING_COLOR_ENABLED = self.db.profile.facingColorEnabled
+    
     -- 初始化箭头纹理路径
     local style = self.db.profile.arrowStyle
     TargetArrow = MediaPath .. (style == 0 and "Arrow" or ("Arrow" .. style))
@@ -562,6 +770,10 @@ end
 function Automaton_TSTargetMark:OnEnable()
     self.frame = self.frame or CreateFrame("Frame")
     self.frame:SetScript("OnUpdate", Arrow_OnUpdate)
+    -- 确保自身高亮图标在启用时正确初始化（如果配置开启）
+    if self.db.profile.selfHighlightEnabled then
+        UpdateSelfHighlight()
+    end
 end
 
 function Automaton_TSTargetMark:OnDisable()
@@ -585,4 +797,8 @@ function Automaton_TSTargetMark:OnDisable()
     -- 清空动画数据
     animationData.arrows = {}
     animationData.specialArrows = {}
+    -- 隐藏自身高亮图标
+    if selfHighlightIcon then
+        selfHighlightIcon:Hide()
+    end
 end

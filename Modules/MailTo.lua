@@ -20,7 +20,7 @@ local Selected, Name, SavedName, Server,playerName
 ------------------------------
 
 local MailToDropDownMenu = CreateFrame("Button", "MailToDropDownMenu", SendMailNameEditBox)
-MailToDropDownMenu:Show()
+MailToDropDownMenu:Hide()
 MailToDropDownMenu:SetWidth(24)
 MailToDropDownMenu:SetHeight(24)
 MailToDropDownMenu:SetPoint("RIGHT", SendMailNameEditBox, "RIGHT", 6, 0)
@@ -55,10 +55,12 @@ function Automaton_MailTo:OnEnable()
 	self:HookScript(self.MailTo, "OnClick", "OnClick")
 	self:HookScript(self.MailTo, "OnEnter", "OnEnter")
 	self:HookScript(self.MailTo, "OnLeave", "OnLeave")
+	self.MailTo:Show()
 end
 
 function Automaton_MailTo:OnDisable()
 	self:UnhookAll()
+	self.MailTo:Hide()
 end
 
 ------------------------------

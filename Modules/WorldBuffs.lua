@@ -12,6 +12,7 @@ Automaton_WorldBuffs.options = {
         type = 'toggle',
         name = "播放提示音",
         desc = "触发时播放提示音",
+        order = 2,
         get = function() return Automaton_WorldBuffs.db.profile.sound end,
         set = function(v) Automaton_WorldBuffs.db.profile.sound = v end,
     },
@@ -19,6 +20,7 @@ Automaton_WorldBuffs.options = {
         type = 'toggle',
         name = "倒计时提醒",
         desc = "屏幕中央闪烁倒计时提醒",
+        order = 3,
         get = function() return Automaton_WorldBuffs.db.profile.showbar end,
         set = function(v) Automaton_WorldBuffs.db.profile.showbar = v end,
     },
@@ -26,6 +28,7 @@ Automaton_WorldBuffs.options = {
         type = 'toggle',
         name = "公会通告",
         desc = "触发时在公会通告",
+        order = 4,
         get = function() return Automaton_WorldBuffs.db.profile.guild end,
         set = function(v) Automaton_WorldBuffs.db.profile.guild = v end,
     },
@@ -33,6 +36,7 @@ Automaton_WorldBuffs.options = {
         type = 'toggle',
         name = "显示炉石按钮",
         desc = "当龙头信息倒计时出现的时候弹出炉石按钮，方便快速回城\n当计时小于10秒后自动隐藏。",
+        order = 5,
         get = function() return Automaton_WorldBuffs.db.profile.showhotel end,
         set = function(v) Automaton_WorldBuffs.db.profile.showhotel = v end,
     },
@@ -40,6 +44,7 @@ Automaton_WorldBuffs.options = {
         type = 'toggle',
         name = "自动登出",
         desc = "获得世界BUFF后自动登出游戏",
+        order = 6,
         get = function() return Automaton_WorldBuffs.db.profile.autoLogout end,
         set = function(v) Automaton_WorldBuffs.db.profile.autoLogout = v end,
     },
@@ -47,6 +52,7 @@ Automaton_WorldBuffs.options = {
         type = 'toggle',
         name = "自动退出游戏",
         desc = "获得世界BUFF后自动退出游戏",
+        order = 7,
         get = function() return Automaton_WorldBuffs.db.profile.autoExit end,
         set = function(v) Automaton_WorldBuffs.db.profile.autoExit = v end,
     },
@@ -116,7 +122,7 @@ end
 function Automaton_WorldBuffs:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("WorldBuffs")
     Automaton:RegisterDefaults("WorldBuffs", "profile", {
-        disabled = false,
+        disabled = false, -- 模块默认启用（世界BUFF）
         showbar = true,
         sound = true,
         guild = false,

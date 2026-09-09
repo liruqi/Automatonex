@@ -14,6 +14,8 @@ L:RegisterTranslations("enUS", function() return {
     ["Auto Accept Shared Quests"] = "Auto Accept Shared Quests",
     ["Automatically accept quests shared by party members"] = "Automatically accept quests shared by party members",
     ["Hold Alt to temporarily disable"] = "Hold Alt to temporarily disable",
+    -- Basic Settings
+    ["Basic Settings"] = "Basic Settings",
     -- Skip Gossip
     ["Skip Gossip"] = "Skip Gossip",
     ["Automatically select the first gossip option when no quests are available"] = "Automatically select the first gossip option when no quests are available",
@@ -38,7 +40,7 @@ L:RegisterTranslations("enUS", function() return {
     ["NPC not found in blacklist"] = "NPC not found in blacklist",
     -- Custom Quests (existing)
     ["Custom Quest Mode"] = "Custom Quest Mode",
-    ["Only automate quests in the custom list"] = "Only automate quests that are in your custom list",
+    ["Only automate quests in the custom list"] = "Per-NPC: if the NPC offers any custom quest, only custom quests are auto accepted/completed; if the NPC has no custom quest, all quests auto accept/complete normally",
     ["Custom Quests"] = "Custom Quests",
     ["Manage your custom quest list"] = "Add, remove and list custom quests",
     ["Add Quest"] = "Add Quest",
@@ -74,6 +76,8 @@ L:RegisterTranslations("zhCN", function() return {
     ["Auto Accept Shared Quests"] = "自动接受共享任务",
     ["Automatically accept quests shared by party members"] = "开启后自动接受队友分享的任务",
     ["Hold Alt to temporarily disable"] = "按住Alt键临时禁用",
+    -- Basic Settings
+    ["Basic Settings"] = "基础功能",
     -- Skip Gossip
     ["Skip Gossip"] = "跳过闲聊",
     ["Automatically select the first gossip option when no quests are available"] = "当NPC没有任务时，自动选择第一个对话选项以跳过闲聊",
@@ -98,11 +102,11 @@ L:RegisterTranslations("zhCN", function() return {
     ["NPC not found in blacklist"] = "未在黑名单中找到该NPC",
     -- Custom Quests (existing)
     ["Custom Quest Mode"] = "自定义任务模式",
-    ["Only automate quests in the custom list"] = "仅对自定义列表中的任务进行自动接取/完成",
+    ["Only automate quests in the custom list"] = "按 NPC 判定：若 NPC 提供任意自定义任务，则只自动接取/完成其自定义任务（其余不动）；若 NPC 无任何自定义任务，则所有任务按常规自动接取/完成",
     ["Custom Quests"] = "自定义任务管理",
     ["Manage your custom quest list"] = "添加、移除和列出您的自定义任务",
     ["Add Quest"] = "添加任务",
-    ["Quest name or keyword"] = "任务名称或关键字（例如'长夜未尽'），输入后回车",
+    ["Quest name or keyword"] = "任务名称或关键字，输入后回车，并点击添加",
     ["Reward index (1-4)"] = "奖励选择 (1-4)",
     ["Add a custom quest"] = "添加一个自定义任务，并指定奖励索引",
     ["Remove Quest"] = "移除任务",
@@ -139,7 +143,8 @@ function Automaton_QuestAutomation:MatchQuestName(questName, targetName)
     end
     local lowerQuest = string.lower(questName)
     local lowerTarget = string.lower(targetName)
-    return string.find(lowerQuest, lowerTarget) ~= nil
+    -- 第 4 个参数 plain=true：把配置名当普通字符串查找，避免任务名含 . - ( ) 等模式特殊字符时匹配异常
+    return string.find(lowerQuest, lowerTarget, 1, true) ~= nil
 end
 
 local function PrintLog(msg, questName, rewardIndex)
@@ -154,13 +159,18 @@ end
 -- 配置选项定义
 -----------------------------------------------------------
 Automaton_QuestAutomation.options = {
+    basicHeader = {
+        type = "header",
+        name = L["Basic Settings"],
+        order = 10,
+    },
     acceptQuests = {
         type = "toggle",
         name = L["Auto Accept Quests"],
         desc = L["Automatically accept available quests"] .. "\n\n" .. L["Hold Alt to temporarily disable"],
         get = function() return Automaton_QuestAutomation.db.profile.acceptQuests end,
         set = function(v) Automaton_QuestAutomation.db.profile.acceptQuests = v end,
-        order = 2
+        order = 11
     },
     completeQuests = {
         type = "toggle",
@@ -168,7 +178,7 @@ Automaton_QuestAutomation.options = {
         desc = L["Automatically complete ready quests"] .. "\n\n" .. L["Hold Alt to temporarily disable"],
         get = function() return Automaton_QuestAutomation.db.profile.completeQuests end,
         set = function(v) Automaton_QuestAutomation.db.profile.completeQuests = v end,
-        order = 3
+        order = 12
     },
     acceptSharedQuests = {
         type = "toggle",
@@ -176,7 +186,7 @@ Automaton_QuestAutomation.options = {
         desc = L["Automatically accept quests shared by party members"] .. "\n\n" .. L["Hold Alt to temporarily disable"],
         get = function() return Automaton_QuestAutomation.db.profile.acceptSharedQuests end,
         set = function(v) Automaton_QuestAutomation.db.profile.acceptSharedQuests = v end,
-        order = 4
+        order = 13
     },
     -- 跳过闲聊
     skipGossip = {
@@ -185,19 +195,19 @@ Automaton_QuestAutomation.options = {
         desc = L["Automatically select the first gossip option when no quests are available"] .. "\n\n" .. L["Hold Alt to temporarily disable"],
         get = function() return Automaton_QuestAutomation.db.profile.skipGossip end,
         set = function(v) Automaton_QuestAutomation.db.profile.skipGossip = v end,
-        order = 5
+        order = 14
     },
     -- 跳过闲聊黑名单管理
     skipGossipBlacklistHeader = {
         type = "header",
         name = L["Skip Gossip Blacklist"],
-        order = 5.1,
+        order = 20,
     },
     skipGossipBlacklistAddName = {
         type = "text",
         name = L["NPC name"],
         desc = L["Add an NPC to blacklist"],
-        order = 5.2,
+        order = 21,
         get = function() return Automaton_QuestAutomation.db.profile._addBlacklistNameTemp or "" end,
         set = function(v) Automaton_QuestAutomation.db.profile._addBlacklistNameTemp = v end,
         usage = "<NPC名称>",
@@ -206,7 +216,7 @@ Automaton_QuestAutomation.options = {
         type = "execute",
         name = L["Add NPC to Blacklist"],
         desc = L["Add an NPC to blacklist"],
-        order = 5.3,
+        order = 22,
         func = function()
             local name = Automaton_QuestAutomation.db.profile._addBlacklistNameTemp
             if name and name ~= "" then
@@ -218,7 +228,7 @@ Automaton_QuestAutomation.options = {
         type = "text",
         name = L["NPC name to remove"],
         desc = L["Remove an NPC from blacklist"],
-        order = 5.4,
+        order = 23,
         get = function() return Automaton_QuestAutomation.db.profile._removeBlacklistNameTemp or "" end,
         set = function(v) Automaton_QuestAutomation.db.profile._removeBlacklistNameTemp = v end,
         usage = "<NPC名称>",
@@ -227,7 +237,7 @@ Automaton_QuestAutomation.options = {
         type = "execute",
         name = L["Remove NPC from Blacklist"],
         desc = L["Remove an NPC from blacklist"],
-        order = 5.5,
+        order = 24,
         func = function()
             local name = Automaton_QuestAutomation.db.profile._removeBlacklistNameTemp
             if name and name ~= "" then
@@ -239,7 +249,7 @@ Automaton_QuestAutomation.options = {
         type = "execute",
         name = L["List Blacklist"],
         desc = L["Show all blacklisted NPCs"],
-        order = 5.6,
+        order = 25,
         func = function()
             Automaton_QuestAutomation:ListSkipGossipBlacklist()
         end,
@@ -248,7 +258,7 @@ Automaton_QuestAutomation.options = {
         type = "execute",
         name = L["Clear Blacklist"],
         desc = L["Remove all NPCs from blacklist"],
-        order = 5.7,
+        order = 26,
         func = function()
             Automaton_QuestAutomation:ClearSkipGossipBlacklist()
         end,
@@ -260,20 +270,20 @@ Automaton_QuestAutomation.options = {
         desc = L["Only automate quests in the custom list"],
         get = function() return Automaton_QuestAutomation.db.profile.useCustomQuests end,
         set = function(v) Automaton_QuestAutomation.db.profile.useCustomQuests = v end,
-        order = 6
+        order = 31
     },
     -- 自定义任务管理分组
     customQuestsHeader = {
         type = "header",
         name = L["Custom Quests"],
-        order = 100,
+        order = 30,
     },
     -- 添加任务：任务名称输入框
     customQuestAddName = {
         type = "text",
         name = L["Quest name or keyword"],
         desc = L["Quest name or keyword"],
-        order = 101,
+        order = 32,
         get = function() return Automaton_QuestAutomation.db.profile._addNameTemp or "" end,
         set = function(v) Automaton_QuestAutomation.db.profile._addNameTemp = v end,
         usage = "<任务名称>",
@@ -284,7 +294,7 @@ Automaton_QuestAutomation.options = {
         name = L["Reward index (1-4)"],
         desc = L["Reward index (1-4)"],
         min = 1, max = 4, step = 1,
-        order = 102,
+        order = 33,
         get = function() return Automaton_QuestAutomation.db.profile._addRewardTemp or 1 end,
         set = function(v) Automaton_QuestAutomation.db.profile._addRewardTemp = v end,
     },
@@ -293,7 +303,7 @@ Automaton_QuestAutomation.options = {
         type = "execute",
         name = L["Add Quest"],
         desc = L["Add a custom quest"],
-        order = 103,
+        order = 34,
         func = function()
             local name = Automaton_QuestAutomation.db.profile._addNameTemp
             local reward = Automaton_QuestAutomation.db.profile._addRewardTemp or 1
@@ -309,7 +319,7 @@ Automaton_QuestAutomation.options = {
         type = "text",
         name = L["Quest name to remove"],
         desc = L["Quest name to remove"],
-        order = 104,
+        order = 35,
         get = function() return Automaton_QuestAutomation.db.profile._removeNameTemp or "" end,
         set = function(v) Automaton_QuestAutomation.db.profile._removeNameTemp = v end,
         usage = "<任务名称>",
@@ -319,7 +329,7 @@ Automaton_QuestAutomation.options = {
         type = "execute",
         name = L["Remove Quest"],
         desc = L["Remove a custom quest"],
-        order = 105,
+        order = 36,
         func = function()
             local name = Automaton_QuestAutomation.db.profile._removeNameTemp
             if not name or name == "" then
@@ -334,7 +344,7 @@ Automaton_QuestAutomation.options = {
         type = "execute",
         name = L["List Quests"],
         desc = L["Show all custom quests"],
-        order = 106,
+        order = 37,
         func = function()
             Automaton_QuestAutomation:ListCustomQuests()
         end,
@@ -344,7 +354,7 @@ Automaton_QuestAutomation.options = {
         type = "execute",
         name = L["Clear All"],
         desc = L["Remove all custom quests"],
-        order = 107,
+        order = 38,
         func = function()
             Automaton_QuestAutomation:ClearCustomQuests()
         end,
@@ -357,7 +367,7 @@ Automaton_QuestAutomation.options = {
 function Automaton_QuestAutomation:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("QuestAutomation")
     Automaton:RegisterDefaults("QuestAutomation", "profile", {
-        disabled = true,
+        disabled = true, -- 模块默认关闭（自动快速交接任务），需手动启用
         acceptQuests = true,
         completeQuests = true,
         acceptSharedQuests = true,
@@ -502,12 +512,54 @@ function Automaton_QuestAutomation:GetCustomQuestSetting(questName)
         return nil
     end
     local quests = self.db.profile.customQuests
+    local lowerName = string.lower(questName)
+    -- 第一遍：精确匹配（忽略大小写），避免短任务名误匹配长任务名
+    -- 例如列表里同时有"天灾石"和"堕落者的天灾石"时，后者不会被子串匹配误判到前者
+    for _, q in ipairs(quests) do
+        if q.enabled and string.lower(q.name or "") == lowerName then
+            return q
+        end
+    end
+    -- 第二遍：子串匹配兜底（支持关键词）
     for _, q in ipairs(quests) do
         if q.enabled and self:MatchQuestName(questName, q.name) then
             return q
         end
     end
     return nil
+end
+
+-----------------------------------------------------------
+-- NPC 自定义任务粘性标记
+-- 规则（按 NPC 判定）：只要当前 NPC 出现任意自定义任务，整个交互期间"只自动处理自定义任务"，
+-- 列表外的任务一律不动；只有当该 NPC 一个自定义任务都没有时，才走常规自动接取/完成。
+-- 切换 NPC 时重置标记（用 NPC 名称区分）。
+-----------------------------------------------------------
+function Automaton_QuestAutomation:GetCurrentNpcName()
+    local npcName = GossipFrameTitleText and GossipFrameTitleText:GetText()
+    if not npcName or npcName == "" then
+        npcName = UnitName("target")
+    end
+    return self:stripText(npcName or "")
+end
+
+function Automaton_QuestAutomation:UpdateNpcCustomFlag(titles)
+    local npcName = self:GetCurrentNpcName()
+    -- NPC 切换时重置粘性标记
+    if npcName ~= "" and npcName ~= self.currentNpcName then
+        self.currentNpcName = npcName
+        self.npcEverHadCustom = false
+    end
+    -- 只要可见任务里有任意自定义任务，就将标记置真并保持（粘性）
+    if self.db.profile.useCustomQuests then
+        for _, t in ipairs(titles) do
+            if self:GetCustomQuestSetting(t) then
+                self.npcEverHadCustom = true
+                break
+            end
+        end
+    end
+    return self.npcEverHadCustom
 end
 
 -----------------------------------------------------------
@@ -589,33 +641,57 @@ function Automaton_QuestAutomation:GOSSIP_SHOW()
     local clicked = false
     local hasAnyTask = false
 
-    -- 先处理任务选项（Available / Active）
+    -- 构建当前 NPC 可见任务标题列表，用于判定"该 NPC 是否含自定义任务"
+    local visibleTitles = {}
     for _, opt in ipairs(gossipOptions) do
         if opt.type == 'Available' or opt.type == 'Active' then
-            hasAnyTask = true
+            table.insert(visibleTitles, opt.title)
+        end
+    end
+    local npcHasCustom = self:UpdateNpcCustomFlag(visibleTitles)
 
-            local shouldClick = false
-            if self.db.profile.useCustomQuests then
-                local custom = self:GetCustomQuestSetting(opt.title)
-                if opt.type == 'Available' and self.db.profile.acceptQuests and custom then
-                    shouldClick = true
-                elseif opt.type == 'Active' and self.db.profile.completeQuests and custom then
-                    shouldClick = true
+    -- 任务选项处理（Available / Active）：
+    -- 该 NPC 含自定义任务 → 只自动处理自定义任务；否则常规自动接取/完成
+    local function TryClickTaskOptions(onlyCustom)
+        for _, opt in ipairs(gossipOptions) do
+            if opt.type == 'Available' or opt.type == 'Active' then
+                hasAnyTask = true
+                local custom = self.db.profile.useCustomQuests and self:GetCustomQuestSetting(opt.title)
+                -- 仅当 custom 为有效表时才算"自定义任务"（useCustomQuests 关闭时 custom=false，不算）
+                local isCustom = not not custom
+                -- onlyCustom=true 仅处理自定义任务；false 仅处理非自定义任务
+                if (onlyCustom == isCustom) then
+                    local shouldClick = false
+                    if opt.type == 'Available' then
+                        -- 接取：自定义/非自定义一致，受 acceptQuests 控制
+                        if self.db.profile.acceptQuests then
+                            shouldClick = true
+                        end
+                    else -- Active 交任务
+                        if self.db.profile.completeQuests then
+                            -- 自定义任务直接交（奖励在 QUEST_COMPLETE 阶段按预设索引处理）
+                            -- 非自定义任务仅当确实已完成才交
+                            if custom or self.completedQuests[opt.title] then
+                                shouldClick = true
+                            end
+                        end
+                    end
+                    if shouldClick then
+                        opt.button:Click()
+                        return true
+                    end
                 end
-            else
-                if opt.type == 'Available' and self.db.profile.acceptQuests then
-                    shouldClick = true
-                elseif opt.type == 'Active' and self.completedQuests[opt.title] and self.db.profile.completeQuests then
-                    shouldClick = true
-                end
-            end
-
-            if shouldClick then
-                opt.button:Click()
-                clicked = true
-                break
             end
         end
+        return false
+    end
+
+    if npcHasCustom then
+        -- 该 NPC 含自定义任务：只自动处理自定义任务，列表外任务一律不动
+        clicked = TryClickTaskOptions(true)
+    else
+        -- 该 NPC 无自定义任务：常规自动接取 / 完成任务
+        clicked = TryClickTaskOptions(false)
     end
 
     -- 若未点击任何任务且跳过闲聊开启，且没有任务选项，则尝试跳过闲聊
@@ -660,20 +736,26 @@ end
 function Automaton_QuestAutomation:QUEST_COMPLETE()
     if self:IsAltKeyHeld() then return end
     
-    local questName = GetTitleText()
+    local questName = self:stripText(GetTitleText())
     local custom = self.db.profile.useCustomQuests and self:GetCustomQuestSetting(questName)
-    
+    -- 同步 NPC 自定义标记（保证从 gossip/greeting 或直接打开任务帧时，标记都反映当前 NPC）
+    self:UpdateNpcCustomFlag({questName})
+
     -- 自定义任务：按预设奖励索引自动选择
     if custom then
         local idx = custom.rewardIndex or 1
         local numChoices = GetNumQuestChoices()
-        if idx >= 1 and idx <= numChoices then
+        if numChoices == 0 then
+            -- 无物品选择：直接点完成按钮领取固定奖励
+            QuestFrameCompleteQuestButton:Click()
+        elseif idx >= 1 and idx <= numChoices then
             GetQuestReward(idx)
         else
             GetQuestReward(1)
         end
-    -- 非自定义任务：仅当只有一个奖励选项时自动完成，多个奖励时让玩家手动选择
-    elseif self.db.profile.completeQuests then
+    -- 非自定义任务：仅当该 NPC 没有自定义任务时才按常规规则自动完成；
+    -- 若该 NPC 含自定义任务，则只自动化自定义任务（非自定义留给玩家手动处理）
+    elseif self.db.profile.completeQuests and not self.npcEverHadCustom then
         local numChoices = GetNumQuestChoices()
         if numChoices <= 1 then
             -- 单一奖励：自动点击完成
@@ -691,14 +773,13 @@ end
 function Automaton_QuestAutomation:QUEST_DETAIL()
     if self:IsAltKeyHeld() then return end
     
-    local questName = GetTitleText()
+    local questName = self:stripText(GetTitleText())
     local custom = self.db.profile.useCustomQuests and self:GetCustomQuestSetting(questName)
-    
-    if custom then
-        if self.db.profile.acceptQuests then
-            AcceptQuest()
-        end
-    elseif self.db.profile.acceptQuests then
+    -- 同步 NPC 自定义标记
+    self:UpdateNpcCustomFlag({questName})
+    -- 非自定义任务：仅当该 NPC 没有自定义任务时才自动接取；
+    -- 若该 NPC 含自定义任务，则只自动化自定义任务（非自定义留给玩家手动处理）
+    if self.db.profile.acceptQuests and (custom or not self.npcEverHadCustom) then
         AcceptQuest()
     end
 end
@@ -706,26 +787,42 @@ end
 function Automaton_QuestAutomation:QUEST_GREETING()
     if self:IsAltKeyHeld() then return end
     
+    -- 构建可见任务标题列表，更新"该 NPC 是否含自定义任务"粘性标记
+    local visibleTitles = {}
     local button, text
     for i = 1, 32 do
         button = getglobal('QuestTitleButton' .. i)
         if button and button:IsVisible() then
             text = self:stripText(button:GetText())
+            table.insert(visibleTitles, text)
+        end
+    end
+    local npcHasCustom = self:UpdateNpcCustomFlag(visibleTitles)
+    
+    for i = 1, 32 do
+        button = getglobal('QuestTitleButton' .. i)
+        if button and button:IsVisible() then
+            text = self:stripText(button:GetText())
             local custom = self.db.profile.useCustomQuests and self:GetCustomQuestSetting(text)
-            
-            if custom then
-                if self.completedQuests[text] and self.db.profile.completeQuests then
-                    button:Click()
-                    break
-                elseif not self.incompleteQuests[text] and self.db.profile.acceptQuests then
-                    button:Click()
-                    break
+            if npcHasCustom then
+                -- 该 NPC 含自定义任务：只处理自定义任务
+                if custom then
+                    if self.completedQuests[text] and self.db.profile.completeQuests then
+                        button:Click()
+                        break
+                    elseif not self.incompleteQuests[text] and self.db.profile.acceptQuests then
+                        button:Click()
+                        break
+                    end
                 end
             else
+                -- 该 NPC 无自定义任务：常规自动接取/完成
                 if self.completedQuests[text] and self.db.profile.completeQuests then
                     button:Click()
+                    break
                 elseif not self.incompleteQuests[text] and self.db.profile.acceptQuests then
                     button:Click()
+                    break
                 end
             end
         end
@@ -761,14 +858,14 @@ end
 function Automaton_QuestAutomation:QUEST_PROGRESS()
     if self:IsAltKeyHeld() then return end
     
-    local questName = GetTitleText()
+    local questName = self:stripText(GetTitleText())
     local custom = self.db.profile.useCustomQuests and self:GetCustomQuestSetting(questName)
-    
-    if custom then
-        if self.db.profile.completeQuests and IsQuestCompletable() then
-            CompleteQuest()
-        end
-    elseif self.db.profile.completeQuests and IsQuestCompletable() then
+    -- 同步 NPC 自定义标记
+    self:UpdateNpcCustomFlag({questName})
+
+    -- 自定义任务：按 completeQuests 直接完成（奖励在 QUEST_COMPLETE 阶段按预设索引处理）
+    -- 非自定义任务：仅当该 NPC 没有自定义任务时，才按常规规则完成
+    if self.db.profile.completeQuests and IsQuestCompletable() and (custom or not self.npcEverHadCustom) then
         CompleteQuest()
     end
 end

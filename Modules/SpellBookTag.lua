@@ -69,7 +69,7 @@ function Automaton_SpellBookTag:ResetSpellColors()
         local buttonName = "SpellButton" .. self:SlotConvert(i) .. "SpellName"
         local textFrame = getglobal(buttonName)
         if textFrame then
-            textFrame:SetTextColor(1.0, 0.82, 0)
+            textFrame:SetTextColor(0.68, 0.85, 1.0)
         end
     end
 end
@@ -151,7 +151,7 @@ function Automaton_SpellBookTag:ShowBorders()
             local buttonName = "SpellButton" .. self:SlotConvert(spellpos) .. "SpellName"
             local textFrame = getglobal(buttonName)
             if textFrame then
-                textFrame:SetTextColor(found and 1 or 1.0, found and 0 or 0.82, found and 0 or 0)
+                textFrame:SetTextColor(found and 0.68 or 1.0, found and 0.85 or 0.82, found and 1.0 or 0)
             end
             spellpos = spellpos + 1
         end

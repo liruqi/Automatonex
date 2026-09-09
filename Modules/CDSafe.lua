@@ -56,6 +56,7 @@ local L = {
     WARNING_LEADER_UNKNOWN = "提醒：[%s] 的团长进度未知，请与团长确认。",
     WARNING_LEADER_SELF_TEMPLATE = "你已锁定 [%s]。带队前请确认，以免黑掉团员进度。",
     INFO_SAFE_ENTER_TEMPLATE = "信息：团长没有 [%s] 的锁定，你可以进入。",
+    INFO_SHARED_LOCKOUT_TEMPLATE = "信息：与团长共享 [%s] 的进度，可以进入。",  -- 新增
     LEADER_SYNC_TIMEOUT_TEXT = "未收到团长同步（团长可能没有安装该插件）。",
     RETRY = "重试",
     RAID_REPORT_TEMPLATE = "[CDSafe] %s | 团长(%s): %s | 你(%s): %s",
@@ -79,6 +80,7 @@ local RAID_DISPLAY = {
     lowerkarazhanhalls = "卡拉赞下层大厅",
     towerofkarazhan = "卡拉赞之塔",
     emeraldsanctum = "翡翠圣地",
+    timbermawhold = "木喉要塞",
 }
 
 -- 优化后的监测区域定义：移除了过于宽泛的 zone-only 规则，改用精确的 subzone 规则
@@ -145,6 +147,12 @@ local WARNING_AREAS = {
         { subzone = "病木林" },
         { subzone = "Naxxramas" },
         { subzone = "纳克萨玛斯" },
+    },
+    timbermawhold = {
+        { subzone = "timbermawhold" },
+        { subzone = "木喉要塞" },
+        { subzone = "timbermawhold" },
+        { subzone = "木喉要塞" },
     },
 }
 
@@ -222,6 +230,13 @@ local RAID_DEFS = {
         display = "Tower of Karazhan",
         aliases = { "Tower of Karazhan", "卡拉赞之塔" },
         entranceSubzones = { "Tower of Karazhan", "卡拉赞之塔", "Karazhan", "卡拉赞" },
+    },
+    {
+        key = "timbermawhold",
+        short = "TMH",
+        display = "Timbermaw Hold",
+        aliases = { "Timbermaw Hold", "木喉要塞" },
+        entranceSubzones = { "Timbermaw Hold", "木喉要塞", "Timbermaw Hold", "木喉要塞" },
     },
 }
 
@@ -1083,7 +1098,27 @@ function Automaton_CDSafe:EvaluateWarning()
 
     if tgetn(locked) == 0 then
         local safeRaidList = self:BuildRaidListText(contextKeys)
-        local safeText = string.format(L.INFO_SAFE_ENTER_TEMPLATE, safeRaidList)
+        -- 检查是否有共享进度的副本
+        local hasSharedLockout = false
+        for i = 1, tgetn(contextKeys) do
+            local key = contextKeys[i]
+            if self.state.leaderRaidKeys and self.state.leaderRaidKeys[key] then
+                local leaderInstanceId = tonumber((self.state.leaderRaidInstanceIdByKey and self.state.leaderRaidInstanceIdByKey[key]) or 0)
+                local playerLocked = self.state.savedRaidKeys and self.state.savedRaidKeys[key] and true or false
+                local playerInstanceId = tonumber((self.state.savedRaidInstanceIdByKey and self.state.savedRaidInstanceIdByKey[key]) or 0)
+                if playerLocked and leaderInstanceId > 0 and playerInstanceId > 0 and leaderInstanceId == playerInstanceId then
+                    hasSharedLockout = true
+                    break
+                end
+            end
+        end
+
+        local safeText
+        if hasSharedLockout then
+            safeText = string.format(L.INFO_SHARED_LOCKOUT_TEMPLATE, safeRaidList)
+        else
+            safeText = string.format(L.INFO_SAFE_ENTER_TEMPLATE, safeRaidList)
+        end
         self:UpdateCenterWarning(safeText, 0.2, 1.0, 0.2)
         return
     end
@@ -1188,7 +1223,9 @@ function Automaton_CDSafe:CreateStatusPanel()
     local helpFrameHeight = 200
     local helpFrameGap = 8
 
-    local panel = CreateFrame("Frame", nil, UIParent)
+    -- 有名字才能进 UISpecialFrames，ESC 才能关闭；隐藏走 Hide()，OnHide 恢复主窗口的逻辑同样生效
+    local panel = CreateFrame("Frame", "AutomatonCDSafePanel", UIParent)
+    table.insert(UISpecialFrames, "AutomatonCDSafePanel")
     panel:SetWidth(panelWidth)
     panel:SetHeight(panelHeight)
     panel:SetPoint("CENTER", UIParent, "CENTER", 0, 0)
@@ -1198,74 +1235,94 @@ function Automaton_CDSafe:CreateStatusPanel()
     panel:RegisterForDrag("LeftButton")
     panel:SetScript("OnDragStart", function() panel:StartMoving() end)
     panel:SetScript("OnDragStop", function() panel:StopMovingOrSizing() end)
-    panel:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    panel:SetBackdropColor(0, 0, 0, 0.95)
+    Automaton.ApplyFlatBackdrop(panel, Automaton.FLAT.window, Automaton.FLAT.border)
     panel:Hide()
     panel:SetScript("OnHide", function()
         if self.ui.helpFrame then self.ui.helpFrame:Hide() end
+        -- 状态面板关闭时恢复主窗口（ShowPanel 里打开过才恢复）
+        if self._hidMainWindow and Automaton.mainFrame then
+            Automaton.mainFrame:Show()
+        end
+        self._hidMainWindow = nil
     end)
 
-    local title = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlightLarge")
-    title:SetPoint("TOP", panel, "TOP", 0, -16)
+    -- 标题栏背景条
+    local titleBg = panel:CreateTexture(nil, "NORMAL")
+    titleBg:SetTexture(0.07, 0.10, 0.16, 0.9)
+    titleBg:SetHeight(24)
+    titleBg:SetPoint("TOPLEFT", 2, -2)
+    titleBg:SetPoint("TOPRIGHT", -2, -2)
+
+    local title = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetFont(STANDARD_TEXT_FONT, 14, "OUTLINE")
+    title:SetTextColor(Automaton.FLAT.title[1], Automaton.FLAT.title[2], Automaton.FLAT.title[3])
+    title:SetPoint("CENTER", titleBg, "CENTER", 0, 0)
     title:SetText(L.PANEL_TITLE)
 
-    local close = CreateFrame("Button", nil, panel, "UIPanelCloseButton")
-    close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -6, -6)
+    -- 关闭按钮（红色扁平）
+    local close = CreateFrame("Button", nil, panel)
+    close:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -10, -10)
+    close:SetWidth(20)
+    close:SetHeight(20)
+    Automaton.ApplyFlatBackdrop(close, { 0.35, 0.08, 0.08, 0.98 }, Automaton.FLAT.border)
+    Automaton.AddFlatBorder(close, Automaton.FLAT.border)
+    local closeLabel = close:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    closeLabel:SetFont(STANDARD_TEXT_FONT, 14)
+    closeLabel:SetTextColor(1, 0.82, 0.82)
+    closeLabel:SetText("X")
+    closeLabel:SetAllPoints()
+    close:SetScript("OnEnter", function() close:SetBackdropColor(0.65, 0.12, 0.12, 1) end)
+    close:SetScript("OnLeave", function() close:SetBackdropColor(0.35, 0.08, 0.08, 0.98) end)
+    close:SetScript("OnClick", function() panel:Hide() end)
 
     -- 帮助按钮
-    local helpButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    helpButton:SetWidth(56)
-    helpButton:SetHeight(22)
+    local helpButton = Automaton.CreateFlatButton(panel, 56, 22, "帮助")
     helpButton:SetPoint("TOPRIGHT", panel, "TOPRIGHT", -38, -14)
-    helpButton:SetText("帮助")
     helpButton:SetScript("OnClick", function() self:ToggleHelpPanel() end)
     self.ui.helpButton = helpButton
 
     -- 临时静音按钮
-    local muteButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    muteButton:SetWidth(60)
-    muteButton:SetHeight(22)
+    local muteButton = Automaton.CreateFlatButton(panel, 60, 22, L.TEMP_MUTE_BUTTON)
     muteButton:SetPoint("RIGHT", helpButton, "LEFT", -4, 0)
-    muteButton:SetText(L.TEMP_MUTE_BUTTON)
     muteButton:SetScript("OnClick", function() self:TemporaryMute(5) end)
 
-    self.ui.syncInfoText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.ui.syncInfoText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    self.ui.syncInfoText:SetFont(STANDARD_TEXT_FONT, 11)
+    self.ui.syncInfoText:SetTextColor(Automaton.FLAT.text[1], Automaton.FLAT.text[2], Automaton.FLAT.text[3])
     self.ui.syncInfoText:SetPoint("TOPLEFT", panel, "TOPLEFT", 20, -52)
     self.ui.syncInfoText:SetText(L.LEADER_SYNC_TIME .. ": N/A")
 
     -- 静音剩余时间显示
-    self.ui.muteStatusText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    self.ui.muteStatusText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    self.ui.muteStatusText:SetFont(STANDARD_TEXT_FONT, 11)
+    self.ui.muteStatusText:SetTextColor(Automaton.FLAT.dim[1], Automaton.FLAT.dim[2], Automaton.FLAT.dim[3])
     self.ui.muteStatusText:SetPoint("TOPLEFT", self.ui.syncInfoText, "BOTTOMLEFT", 0, -2)
     self.ui.muteStatusText:SetText("")
 
-    local syncRetryButton = CreateFrame("Button", nil, panel, "UIPanelButtonTemplate")
-    syncRetryButton:SetWidth(46)
-    syncRetryButton:SetHeight(18)
+    local syncRetryButton = Automaton.CreateFlatButton(panel, 46, 18, L.RETRY)
     syncRetryButton:SetPoint("LEFT", self.ui.syncInfoText, "RIGHT", 8, 0)
-    syncRetryButton:SetText(L.RETRY)
     syncRetryButton:SetScript("OnClick", function() self:BeginLeaderSyncAttempt(true) end)
     syncRetryButton:Hide()
     self.ui.syncRetryButton = syncRetryButton
 
-    local headerRaid = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local headerRaid = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerRaid:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+    headerRaid:SetTextColor(Automaton.FLAT.title[1], Automaton.FLAT.title[2], Automaton.FLAT.title[3])
     headerRaid:SetPoint("TOPLEFT", panel, "TOPLEFT", columnRaidX, headerY)
     headerRaid:SetText(L.HEADER_RAID)
 
-    local headerLeader = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local headerLeader = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerLeader:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+    headerLeader:SetTextColor(Automaton.FLAT.title[1], Automaton.FLAT.title[2], Automaton.FLAT.title[3])
     headerLeader:SetPoint("TOPLEFT", panel, "TOPLEFT", columnLeaderX, headerY)
     headerLeader:SetWidth(statusColumnWidth)
     headerLeader:SetJustifyH("LEFT")
     headerLeader:SetText(L.HEADER_LEADER .. " - ?")
     self.ui.headerLeaderText = headerLeader
 
-    local headerPlayer = panel:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local headerPlayer = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    headerPlayer:SetFont(STANDARD_TEXT_FONT, 12, "OUTLINE")
+    headerPlayer:SetTextColor(Automaton.FLAT.title[1], Automaton.FLAT.title[2], Automaton.FLAT.title[3])
     headerPlayer:SetPoint("TOPLEFT", panel, "TOPLEFT", columnPlayerX, headerY)
     headerPlayer:SetWidth(statusColumnWidth)
     headerPlayer:SetJustifyH("LEFT")
@@ -1278,16 +1335,22 @@ function Automaton_CDSafe:CreateStatusPanel()
         local rowKey = def.key
 
         local raidText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        raidText:SetFont(STANDARD_TEXT_FONT, 11)
+        raidText:SetTextColor(Automaton.FLAT.text[1], Automaton.FLAT.text[2], Automaton.FLAT.text[3])
         raidText:SetPoint("TOPLEFT", panel, "TOPLEFT", columnRaidX, y)
         raidText:SetWidth(columnLeaderX - columnRaidX - 18)
         raidText:SetJustifyH("LEFT")
 
         local leaderText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        leaderText:SetFont(STANDARD_TEXT_FONT, 11)
+        leaderText:SetTextColor(Automaton.FLAT.text[1], Automaton.FLAT.text[2], Automaton.FLAT.text[3])
         leaderText:SetPoint("TOPLEFT", panel, "TOPLEFT", columnLeaderX, y)
         leaderText:SetWidth(statusColumnWidth)
         leaderText:SetJustifyH("LEFT")
 
         local playerText = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+        playerText:SetFont(STANDARD_TEXT_FONT, 11)
+        playerText:SetTextColor(Automaton.FLAT.text[1], Automaton.FLAT.text[2], Automaton.FLAT.text[3])
         playerText:SetPoint("TOPLEFT", panel, "TOPLEFT", columnPlayerX, y)
         playerText:SetWidth(statusColumnWidth)
         playerText:SetJustifyH("LEFT")
@@ -1313,37 +1376,48 @@ function Automaton_CDSafe:CreateStatusPanel()
         }
     end
 
-    local help = panel:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local help = panel:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    help:SetFont(STANDARD_TEXT_FONT, 11)
+    help:SetTextColor(Automaton.FLAT.dim[1], Automaton.FLAT.dim[2], Automaton.FLAT.dim[3])
     help:SetPoint("TOPLEFT", self.ui.syncInfoText, "BOTTOMLEFT", 0, -20) -- 下移一点，避免与muteStatusText重叠
     help:SetWidth(panelWidth - 40)
     help:SetJustifyH("LEFT")
     help:SetText(L.HELP_MINIMAP)
 
-    local helpFrame = CreateFrame("Frame", nil, UIParent)
+    local helpFrame = CreateFrame("Frame", "AutomatonCDSafeHelpFrame", UIParent)
+    table.insert(UISpecialFrames, "AutomatonCDSafeHelpFrame")
     helpFrame:SetWidth(helpFrameWidth)
     helpFrame:SetHeight(helpFrameHeight)
     helpFrame:SetPoint("BOTTOM", panel, "TOP", 0, helpFrameGap)
     helpFrame:SetFrameStrata("DIALOG")
     helpFrame:SetFrameLevel((panel:GetFrameLevel() or 1) + 10)
-    helpFrame:SetBackdrop({
-        bgFile = "Interface\\DialogFrame\\UI-DialogBox-Background",
-        edgeFile = "Interface\\DialogFrame\\UI-DialogBox-Border",
-        tile = true,
-        tileSize = 16,
-        edgeSize = 16,
-        insets = { left = 4, right = 4, top = 4, bottom = 4 },
-    })
-    helpFrame:SetBackdropColor(0, 0, 0, 0.95)
+    Automaton.ApplyFlatBackdrop(helpFrame, Automaton.FLAT.window, Automaton.FLAT.border)
     helpFrame:Hide()
 
-    local helpTitle = helpFrame:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+    local helpTitle = helpFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    helpTitle:SetFont(STANDARD_TEXT_FONT, 13, "OUTLINE")
+    helpTitle:SetTextColor(Automaton.FLAT.title[1], Automaton.FLAT.title[2], Automaton.FLAT.title[3])
     helpTitle:SetPoint("TOP", helpFrame, "TOP", 0, -16)
     helpTitle:SetText("CDSafe 逻辑说明")
 
-    local helpClose = CreateFrame("Button", nil, helpFrame, "UIPanelCloseButton")
-    helpClose:SetPoint("TOPRIGHT", helpFrame, "TOPRIGHT", -6, -6)
+    local helpClose = CreateFrame("Button", nil, helpFrame)
+    helpClose:SetPoint("TOPRIGHT", helpFrame, "TOPRIGHT", -10, -10)
+    helpClose:SetWidth(20)
+    helpClose:SetHeight(20)
+    Automaton.ApplyFlatBackdrop(helpClose, { 0.35, 0.08, 0.08, 0.98 }, Automaton.FLAT.border)
+    Automaton.AddFlatBorder(helpClose, Automaton.FLAT.border)
+    local helpCloseLabel = helpClose:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    helpCloseLabel:SetFont(STANDARD_TEXT_FONT, 14)
+    helpCloseLabel:SetTextColor(1, 0.82, 0.82)
+    helpCloseLabel:SetText("X")
+    helpCloseLabel:SetAllPoints()
+    helpClose:SetScript("OnEnter", function() helpClose:SetBackdropColor(0.65, 0.12, 0.12, 1) end)
+    helpClose:SetScript("OnLeave", function() helpClose:SetBackdropColor(0.35, 0.08, 0.08, 0.98) end)
+    helpClose:SetScript("OnClick", function() helpFrame:Hide() end)
 
-    local helpBody = helpFrame:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
+    local helpBody = helpFrame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    helpBody:SetFont(STANDARD_TEXT_FONT, 11)
+    helpBody:SetTextColor(Automaton.FLAT.text[1], Automaton.FLAT.text[2], Automaton.FLAT.text[3])
     helpBody:SetPoint("TOPLEFT", helpFrame, "TOPLEFT", 20, -44)
     helpBody:SetWidth(helpFrameWidth - 40)
     helpBody:SetJustifyH("LEFT")
@@ -1379,6 +1453,14 @@ end
 
 function Automaton_CDSafe:ShowPanel()
     if not self.ui.panel then return end
+    -- 状态面板和主窗口都居中、尺寸相近，同时显示会叠在一起；
+    -- 打开面板时先把主窗口藏起来，面板 OnHide 时再恢复（只恢复自己藏的）
+    local main = Automaton.mainFrame
+    self._hidMainWindow = nil
+    if main and main.IsShown and main:IsShown() then
+        main:Hide()
+        self._hidMainWindow = true
+    end
     self:RefreshStatusPanel()
     self.ui.panel:Show()
 end

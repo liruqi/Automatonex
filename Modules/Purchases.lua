@@ -159,7 +159,7 @@ local function createCategoryOptions(category)
 				Automaton_Purchases:Print(string.format(L[category].." 购买数量已设置为: %d", v))
 			end,
 			min = 0,
-			max = 100,
+			max = 300,
 			step = 5,
 			bigStep = 10,
 		},
@@ -172,18 +172,21 @@ Automaton_Purchases.options = {
 		type = "group",
 		name = L["Purchases"],
 		desc = L["Automatically restock items"],
+		order = 1,
 		args = createCategoryOptions("Purchases")
 	},
 	category1 = {
 		type = "group",
 		name = L["Purchases1"],
 		desc = L["Automatically restock items"],
+		order = 2,
 		args = createCategoryOptions("Purchases1")
 	},
 	category2 = {
 		type = "group",
 		name = L["Purchases2"],
 		desc = L["Automatically restock items"],
+		order = 3,
 		args = createCategoryOptions("Purchases2")
 	}
 }

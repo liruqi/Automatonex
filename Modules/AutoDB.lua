@@ -21,7 +21,7 @@ function Automaton_AutoDB:OnInitialize()
     })
     -- 角色级数据（统计信息、设置等）
     Automaton:RegisterDefaults("AutoDB", "char", {
-        disabled = false,
+        disabled = true,
         statistics = {
             totalFlights = 0,
             totalTime = 0,
@@ -134,8 +134,14 @@ function Automaton_AutoDB:PLAYER_ENTERING_WORLD()
     if self.isInFlight and not UnitOnTaxi("player") then
         self:RecordFlight()
     end
-    
-    self:CheckAndExecuteCommands()
+
+    -- 延迟到登录界面重建完成后再执行 /db 命令。
+    -- 若在登录窗口期内（pfUI/pfQuest 尚在初始化）执行 /db track，
+    -- pfQuest 触发的全屏世界地图 + 之后裸 Hide 会破坏 UIPanel 显示状态，
+    -- 导致刚进游戏时所有动作条/界面被隐藏。固定延迟 5 秒避开竞争。
+    C_Timer.After(5, function()
+        self:CheckAndExecuteCommands()
+    end)
 end
 
 function Automaton_AutoDB:TAXIMAP_OPENED()
@@ -208,8 +214,9 @@ function Automaton_AutoDB:CheckAndExecuteCommands()
     end
     
     if self.skillsLoaded and Automaton:IsModuleActive("AutoDB") then
-        self:ExecuteEnabledCommands()
+        -- 先置位再执行：执行链内部已逐条 pcall，确保任何情况下不再重入
         self.done = true
+        self:ExecuteEnabledCommands()
     else
         -- 延迟检查
         C_Timer.After(0.5, function() self:CheckAndExecuteCommands() end)
@@ -220,24 +227,47 @@ end
 --      Core Functions      --
 ------------------------------
 
+-- 执行斜杠命令：优先直接调用 SlashCmdList 处理函数（pcall 保护），
+-- 避免在登录早期操作 DEFAULT_CHAT_FRAME.editBox 与 pfUI 聊天框冲突；
+-- 未命中处理函数时再回退到输入框方式。
 function Automaton_AutoDB:ExecuteSlashCommand(command)
-    -- 不显示任何通知
-    DEFAULT_CHAT_FRAME.editBox:SetText(command)
-    ChatEdit_SendText(DEFAULT_CHAT_FRAME.editBox, 0)
+    local _, _, slash, msg = string.find(command, "^(%S+)%s*(.-)%s*$")
+    if slash then
+        -- SLASH_DB1 -> SlashCmdList.DB（键为大写命令名，不带斜杠）
+        local handler = SlashCmdList[string.upper(string.sub(slash, 2))]
+        if handler then
+            local ok, err = pcall(handler, msg or "")
+            if ok then return end
+        end
+    end
+
+    -- 回退：走聊天输入框（同样 pcall 保护，防止登录期报错打断加载链）
+    pcall(function()
+        DEFAULT_CHAT_FRAME.editBox:SetText(command)
+        ChatEdit_SendText(DEFAULT_CHAT_FRAME.editBox, 0)
+    end)
 end
 
 function Automaton_AutoDB:ExecuteEnabledCommands()
-    -- 执行所有预设命令
-    self:ExecuteSlashCommand("/db track taxi")
-    self:ExecuteSlashCommand("/db track innkeeper")
-    
+    -- 执行所有预设命令（逐条 pcall，单条出错不影响后续）
+    pcall(function() self:ExecuteSlashCommand("/db track taxi") end)
+    pcall(function() self:ExecuteSlashCommand("/db track innkeeper") end)
+
     -- 如果是猎人职业，额外执行追踪兽栏
     if self.playerClass == "HUNTER" then
-        self:ExecuteSlashCommand("/db track stablemaster")
+        pcall(function() self:ExecuteSlashCommand("/db track stablemaster") end)
     end
-    
-    -- 隐藏可能被打开的世界地图
-    WorldMapFrame:Hide()
+
+    -- 隐藏可能被 pfQuest 打开的世界地图。
+    -- 必须用 HideUIPanel 正规关闭（保留 UIPanel 面板状态登记），
+    -- 裸 WorldMapFrame:Hide() 在登录期会留下损坏的显示状态，
+    -- 表现为所有动作条/界面被隐藏。
+    if WorldMapFrame and WorldMapFrame.IsShown and WorldMapFrame:IsShown() then
+        local ok = pcall(function() HideUIPanel(WorldMapFrame) end)
+        if not ok then
+            pcall(function() WorldMapFrame:Hide() end)
+        end
+    end
 end
 
 -- FlightPath-Turtle 核心功能
@@ -303,9 +333,9 @@ function Automaton_AutoDB:OnTaxiNodeEnter(button)
     
     local timeText
 
-    -- 读取账号级飞行时间数据
-    if origin and destination and self.db.account.flightTimes[origin] and self.db.account.flightTimes[origin][destination] then
-        local flightTime = self.db.account.flightTimes[origin][destination]
+    -- 读取账号级飞行时间数据（规范化 key 匹配，兼容旧数据）
+    local flightTime = self:GetFlightTime(origin, destination)
+    if flightTime then
         timeText = self:FormatTimeTooltip(flightTime)
     else
         timeText = "--:--"
@@ -318,9 +348,8 @@ end
 function Automaton_AutoDB:StartFlight(from, to, cost)
     self.flightStartTime = GetTime()
     
-    -- 读取账号级飞行时间数据
-    local fromTimes = self.db.account.flightTimes[from]
-    local knownTime = fromTimes and fromTimes[to]
+    -- 读取账号级飞行时间数据（规范化 key 匹配，兼容旧数据）
+    local knownTime = self:GetFlightTime(from, to)
 
     -- 向队伍或团队宣布ETA
     if self.db.char.options.announceETA then
@@ -387,16 +416,18 @@ function Automaton_AutoDB:RecordFlight()
         return
     end
 
-    -- 存储到账号级数据库
-    if not self.db.account.flightTimes[fromName] then
-        self.db.account.flightTimes[fromName] = {}
+    -- 存储到账号级数据库（规范化飞行点名称，确保跨角色 key 一致）
+    local normFrom = self:NormalizeNodeName(fromName)
+    local normTo = self:NormalizeNodeName(toName)
+    if not self.db.account.flightTimes[normFrom] then
+        self.db.account.flightTimes[normFrom] = {}
     end
-    self.db.account.flightTimes[fromName][toName] = flightDuration
+    self.db.account.flightTimes[normFrom][normTo] = flightDuration
 
-    if not self.db.account.flightCosts[fromName] then
-        self.db.account.flightCosts[fromName] = {}
+    if not self.db.account.flightCosts[normFrom] then
+        self.db.account.flightCosts[normFrom] = {}
     end
-    self.db.account.flightCosts[fromName][toName] = cost
+    self.db.account.flightCosts[normFrom][normTo] = cost
 
     -- 角色级统计信息保持不变
     local stats = self.db.char.statistics
@@ -586,6 +617,32 @@ function Automaton_AutoDB:FormatMoney(copper)
     if copp > 0 or table.getn(t) == 0 then table.insert(t, copp .. "|cffeda55f铜|r") end
 
     return table.concat(t, " ")
+end
+
+-- 规范化飞行点名称：去掉首尾空白/tab，统一英文逗号为中文逗号
+-- 消除 TaxiNodeName 返回格式不一致（部分飞行点含 tab、英文逗号）导致的 key 匹配失败
+function Automaton_AutoDB:NormalizeNodeName(name)
+    if not name then return name end
+    name = string.gsub(name, "^%s+", "")
+    name = string.gsub(name, "%s+$", "")
+    name = string.gsub(name, ",", "，")
+    return name
+end
+
+-- 读取飞行时间：先按规范化 key 匹配，再按原始 key 匹配（兼容旧数据）
+function Automaton_AutoDB:GetFlightTime(origin, destination)
+    if not origin or not destination then return nil end
+    local ft = self.db.account.flightTimes
+    if not ft then return nil end
+    local normOrigin = self:NormalizeNodeName(origin)
+    local normDest = self:NormalizeNodeName(destination)
+    if ft[normOrigin] and ft[normOrigin][normDest] then
+        return ft[normOrigin][normDest]
+    end
+    if ft[origin] and ft[origin][destination] then
+        return ft[origin][destination]
+    end
+    return nil
 end
 
 function Automaton_AutoDB:GetFlyerRank(flightCount)

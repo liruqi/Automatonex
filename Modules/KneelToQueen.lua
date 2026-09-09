@@ -30,7 +30,7 @@ Automaton_KneelToQueen.allowedSubZone = "象棋大厅"
 function Automaton_KneelToQueen:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("KneelToQueen")
     Automaton:RegisterDefaults("KneelToQueen", "profile", {
-        disabled = false,
+        disabled = true,
         debugMode = false,
     })
     Automaton:SetDisabledAsDefault(self, "KneelToQueen")

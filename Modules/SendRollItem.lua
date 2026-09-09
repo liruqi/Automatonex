@@ -93,9 +93,9 @@ function Automaton_SendRollItem:OnInitialize()
     -- 初始化数据库
     self.db = Automaton:AcquireDBNamespace("SendRollItem")
     Automaton:RegisterDefaults("SendRollItem", "profile", {
-        disabled = false,
+        disabled = true,
         report_boss = true,
-        report_mobs = true,
+        report_mobs = false,
         report_chest = true,
     })
     
@@ -132,30 +132,30 @@ end
 
 function Automaton_SendRollItem:LOOT_OPENED()
     -- 添加权限检查：只有团长或助理才能发送通告
-    -- local hasAuthority = false
+    local hasAuthority = false
     
-    -- if GetNumRaidMembers() > 1 then
-    --     -- 在团队中，检查是否为团长或助理
-    --     local name = UnitName("player")
-    --     for i = 1, GetNumRaidMembers() do
-    --         local raidName, rank = GetRaidRosterInfo(i)
-    --         if raidName == name then
-    --             hasAuthority = (rank == 1 or rank == 2) -- 1=助理, 2=团长
-    --             break
-    --         end
-    --     end
-    -- elseif GetNumPartyMembers() > 1 then
-    --     -- 在队伍中，检查是否为队长
-    --     hasAuthority = UnitIsPartyLeader("player")
-    -- else
-    --     -- 单人时默认有权限
-    --     hasAuthority = true
-    -- end
+    if GetNumRaidMembers() > 1 then
+        -- 在团队中，检查是否为团长或助理
+        local name = UnitName("player")
+        for i = 1, GetNumRaidMembers() do
+            local raidName, rank = GetRaidRosterInfo(i)
+            if raidName == name then
+                hasAuthority = (rank == 1 or rank == 2) -- 1=助理, 2=团长
+                break
+            end
+        end
+    elseif GetNumPartyMembers() > 1 then
+        -- 在队伍中，检查是否为队长
+        hasAuthority = UnitIsPartyLeader("player")
+    else
+        -- 单人时默认有权限
+        hasAuthority = true
+    end
     
-    -- -- 如果没有权限，则直接退出
-    -- if not hasAuthority then
-    --     return
-    -- end
+    -- 如果没有权限，则直接退出
+    if not hasAuthority then
+        return
+    end
 
     -- 确定发送频道
     local channel = nil

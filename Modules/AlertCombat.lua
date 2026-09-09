@@ -8,9 +8,15 @@ Automaton_AlertCombat = Automaton:NewModule("AlertCombat")
 Automaton_AlertCombat.modulename = "战斗提示"
 Automaton_AlertCombat.moduledesc = "战斗时屏幕打印提示"
 Automaton_AlertCombat.options = {
+    header1 = {
+        type = "header",
+        name = "战斗提示",
+        order = 10,
+    },
     enableSound = {
         type = "toggle",
         name = "进入战斗提示音",
+        order = 11,
         desc = "进入战斗时是否播放提示音",
         get = function() return Automaton_AlertCombat.db.profile.enableSound end,
         set = function(v)
@@ -24,6 +30,7 @@ Automaton_AlertCombat.options = {
         type = "toggle",
         name = "死亡娱乐消息",
         desc = "死亡时是否显示幽默/鼓励性提示消息",
+        order = 12,
         get = function() return Automaton_AlertCombat.db.profile.enableDeathAlert end,
         set = function(v)
             Automaton_AlertCombat.db.profile.enableDeathAlert = v
@@ -36,6 +43,7 @@ Automaton_AlertCombat.options = {
         type = "toggle",
         name = "宠物血量预警",
         desc = "宠物血量过低时提示",
+        order = 13,
         get = function() return Automaton_AlertCombat.db.profile.enablePetAlert end,
         set = function(v)
             Automaton_AlertCombat.db.profile.enablePetAlert = v
@@ -48,6 +56,7 @@ Automaton_AlertCombat.options = {
         type = "toggle",
         name = "宠物快乐值预警",
         desc = "宠物快乐值低时提示",
+        order = 14,
         get = function() return Automaton_AlertCombat.db.profile.enablePetHappiness end,
         set = function(v)
             Automaton_AlertCombat.db.profile.enablePetHappiness = v
@@ -57,9 +66,15 @@ Automaton_AlertCombat.options = {
         end,
     },
     -- ========== 新增仇恨预警选项 ==========
+    header2 = {
+        type = "header",
+        name = "仇恨预警",
+        order = 20,
+    },
     enableAggroAlert = {
         type = "toggle",
         name = "仇恨预警（需Superwow模组）",
+        order = 21,
         desc = "当怪物目标为你时在屏幕中央显示警告",
         get = function() return Automaton_AlertCombat.db.profile.enableAggroAlert end,
         set = function(v)
@@ -67,10 +82,10 @@ Automaton_AlertCombat.options = {
             if Automaton.SaveDatabase then
                 Automaton.SaveDatabase("AutomatonDB")
             end
-            -- 动态启用/禁用检查
+            -- 动态启用/禁用检查（仅当友方盯梢提醒也未开启时才停止）
             if v then
                 Automaton_AlertCombat:StartAggroCheck()
-            else
+            elseif not Automaton_AlertCombat.db.profile.enableFriendlyTargetAlert then
                 Automaton_AlertCombat:StopAggroCheck()
             end
         end,
@@ -79,6 +94,7 @@ Automaton_AlertCombat.options = {
         type = "toggle",
         name = "自动渐隐术",
         desc = "检测到仇恨时自动施放渐隐术（仅牧师）",
+        order = 22,
         get = function() return Automaton_AlertCombat.db.profile.aggroAutoFade end,
         set = function(v)
             Automaton_AlertCombat.db.profile.aggroAutoFade = v
@@ -91,6 +107,7 @@ Automaton_AlertCombat.options = {
         type = "range",
         name = "预警冷却(秒)",
         desc = "两次预警之间的最短间隔",
+        order = 23,
         min = 5,
         max = 60,
         step = 1,
@@ -106,11 +123,32 @@ Automaton_AlertCombat.options = {
         type = "toggle",
         name = "预警提示音",
         desc = "预警时播放提示音",
+        order = 24,
         get = function() return Automaton_AlertCombat.db.profile.aggroSound end,
         set = function(v)
             Automaton_AlertCombat.db.profile.aggroSound = v
             if Automaton.SaveDatabase then
                 Automaton.SaveDatabase("AutomatonDB")
+            end
+        end,
+    },
+    -- ========== 新增：友方盯梢提醒（友方目标是你时提示「有人偷瞄了你」） ==========
+    enableFriendlyTargetAlert = {
+        type = "toggle",
+        name = "友方盯梢提醒",
+        desc = "当友方玩家目标是你时，提示「有人偷瞄了你」",
+        order = 25,
+        get = function() return Automaton_AlertCombat.db.profile.enableFriendlyTargetAlert end,
+        set = function(v)
+            Automaton_AlertCombat.db.profile.enableFriendlyTargetAlert = v
+            if Automaton.SaveDatabase then
+                Automaton.SaveDatabase("AutomatonDB")
+            end
+            -- 动态启用/禁用检查（仅当 OT 预警也未开启时才停止）
+            if v then
+                Automaton_AlertCombat:StartAggroCheck()
+            elseif not Automaton_AlertCombat.db.profile.enableAggroAlert then
+                Automaton_AlertCombat:StopAggroCheck()
             end
         end,
     },
@@ -120,26 +158,55 @@ Automaton_AlertCombat.options = {
 --      Initialization      --
 ------------------------------
 function Automaton_AlertCombat:OnInitialize()
-    self.db = AutomatonDB or {}
+    -- 确保全局变量正确初始化并赋回全局，否则首次加载时数据无法持久化到 SavedVariables
+    AutomatonDB = AutomatonDB or {}
+    self.db = AutomatonDB
     self.db.profile = self.db.profile or { 
         enableSound = false, 
         enableDeathAlert = true,
         enablePetAlert = true, 
         enablePetHappiness = true,
-        petFoodName = nil,
-        petFoodTexture = nil,
-        feedButtonPosition = {
-            point = "CENTER",
-            relativePoint = "CENTER", 
-            xOfs = 0,
-            yOfs = -100
-        },
+        -- 宠物食物相关字段已迁移到角色专属，不再在此处定义默认值
         -- 新增仇恨预警默认值
         enableAggroAlert = false,
         aggroAutoFade = true,
         aggroCooldown = 30,
         aggroSound = true,
+        -- 友方盯梢提醒默认值（关闭）
+        enableFriendlyTargetAlert = false,
     }
+
+    -- ====== 角色专属存储 ======
+    -- 关键：必须把新表赋回全局 AutomatonDBChar，否则数据写入了局部新表、
+    -- 退出时 WoW 保存的全局变量仍是 nil，食物设置无法按角色保存
+    AutomatonDBChar = AutomatonDBChar or {}
+    self.dbChar = AutomatonDBChar
+    if not self.dbChar.AlertCombat then
+        self.dbChar.AlertCombat = {}
+    end
+
+    -- 迁移旧数据（从全局到角色专属）
+    if self.db.profile.petFoodName and not self.dbChar.AlertCombat.petFoodName then
+        self.dbChar.AlertCombat.petFoodName = self.db.profile.petFoodName
+        self.dbChar.AlertCombat.petFoodTexture = self.db.profile.petFoodTexture
+        self.dbChar.AlertCombat.feedButtonPosition = self.db.profile.feedButtonPosition
+        -- 清除旧全局数据
+        self.db.profile.petFoodName = nil
+        self.db.profile.petFoodTexture = nil
+        self.db.profile.feedButtonPosition = nil
+        if Automaton.SaveDatabase then
+            Automaton.SaveDatabase("AutomatonDB")
+        end
+    end
+    -- 如果角色专属没有位置信息，设置默认位置
+    if not self.dbChar.AlertCombat.feedButtonPosition then
+        self.dbChar.AlertCombat.feedButtonPosition = {
+            point = "CENTER",
+            relativePoint = "CENTER",
+            xOfs = 0,
+            yOfs = -100
+        }
+    end
 
     -- 死亡提示消息列表
     self.deathMessages = {
@@ -230,6 +297,7 @@ function Automaton_AlertCombat:OnInitialize()
 
     self.aggroFadeTimer = 0
     self.lastAggroAlert = 0
+    self.lastFriendlyAlert = 0
 
     self.aggroFrame:SetScript("OnUpdate", function()
         if self.aggroFadeTimer > 0 then
@@ -267,8 +335,8 @@ function Automaton_AlertCombat:OnEnable()
         self:CheckPetDeath()
     end)
 
-    -- ========== 启动仇恨检查 ==========
-    if self.db.profile.enableAggroAlert then
+    -- ========== 启动仇恨检查（OT预警 或 友方盯梢提醒 任一开启即启动） ==========
+    if self.db.profile.enableAggroAlert or self.db.profile.enableFriendlyTargetAlert then
         self:StartAggroCheck()
     end
 end
@@ -311,30 +379,92 @@ function Automaton_AlertCombat:StopAggroCheck()
     end
 end
 
+-- ========== 友方玩家盯梢扫描（不依赖名字板） ==========
+-- 根因说明：本客户端 frame:GetName(1) 返回的是名字板单位 GUID（Nampower v2.28+），
+-- 即只有显示了名字板的单位才会被帧扫描看到；pfUI 友方名字板默认关闭(showfriendly=0)，
+-- 友方玩家永远扫不到。此处改用标准 unit token（目标/悬停/小队/团队）做可靠扫描。
+function Automaton_AlertCombat:ScanFriendlyWatchers()
+    local playerName = UnitName("player")
+    if not playerName then return nil end
+
+    -- 候选单位：当前目标、鼠标悬停、小队、团队
+    local candidates = { "target", "mouseover" }
+    local n = GetNumPartyMembers() or 0
+    for i = 1, n do
+        table.insert(candidates, "party" .. i)
+    end
+    local rn = GetNumRaidMembers() or 0
+    for i = 1, rn do
+        table.insert(candidates, "raid" .. i)
+    end
+
+    for i = 1, table.getn(candidates) do
+        local unit = candidates[i]
+        local oku, exists = pcall(UnitExists, unit)
+        if oku and exists then
+            -- 排除自己（如自己目标了自己）
+            local oku2, isSelf = pcall(UnitIsUnit, unit, "player")
+            if not (oku2 and isSelf) then
+                -- 友方判定用 UnitIsFriend（对玩家/NPC/宠物均可靠），不要依赖 UnitCanAttack
+                local okf, isFriend = pcall(UnitIsFriend, "player", unit)
+                if okf and isFriend then
+                    local okt, texists = pcall(UnitExists, unit .. "target")
+                    if okt and texists then
+                        local tname = UnitName(unit .. "target")
+                        if tname == playerName then
+                            return UnitName(unit) or "某人"
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return nil
+end
+
 -- ========== 仇恨检查核心 ==========
 function Automaton_AlertCombat:CheckAggro()
-    if not self.db.profile.enableAggroAlert then return end
+    if not self.db.profile.enableAggroAlert and not self.db.profile.enableFriendlyTargetAlert then return end
     if UnitIsDeadOrGhost("player") then return end
 
     local now = GetTime()
-    if now - self.lastAggroAlert < self.db.profile.aggroCooldown then return end
+    local cooldown = self.db.profile.aggroCooldown or 30
 
     local playerName = UnitName("player")
-    local found = false
     local mobName = ""
+    local friendlyName = ""
+    local foundHostile = false
+    local foundFriendly = false
 
     local f = EnumerateFrames()
     while f do
         if f.IsVisible and f:IsVisible() then
             local unitToken = f.GetName and f:GetName(1)
-             if unitToken and UnitExists(unitToken) then
-                local targetUnit = unitToken .. "target"
-                if UnitExists(targetUnit) then
-                    local targetName = UnitName(targetUnit)
-                    if targetName == playerName then
-                        mobName = UnitName(unitToken) or "未知目标"
-                        found = true
-                        break
+            if unitToken then
+                -- 安全检测单位是否存在
+                local ok, exists = pcall(UnitExists, unitToken)
+                if ok and exists then
+                    -- 阵营判定：友方(UnitIsFriend)优先，绝不进 OT 分支
+                    -- 注意：pcall 返回 (success, value1, ...)，第二个返回值才是 API 的真正结果
+                    local okf, isFriend = pcall(UnitIsFriend, "player", unitToken)
+                    local okc, canAttack = pcall(UnitCanAttack, "player", unitToken)
+                    local targetUnit = unitToken .. "target"
+                    local ok2, targetExists = pcall(UnitExists, targetUnit)
+                    if ok2 and targetExists then
+                        local targetName = UnitName(targetUnit)
+                        if targetName == playerName then
+                            if okf and isFriend then
+                                -- 友方单位（玩家/NPC/宠物）目标是你 → 偷瞄提醒，绝不显示 OT
+                                if unitToken ~= "player" then
+                                    friendlyName = UnitName(unitToken) or "某人"
+                                    foundFriendly = true
+                                end
+                            elseif okc and canAttack then
+                                -- 敌对/可攻击单位（怪物）目标是你 → OT 警告
+                                mobName = UnitName(unitToken) or "未知目标"
+                                foundHostile = true
+                            end
+                        end
                     end
                 end
             end
@@ -342,8 +472,26 @@ function Automaton_AlertCombat:CheckAggro()
         f = EnumerateFrames(f)
     end
 
-    if found then
-        self:ShowAggroAlert(mobName)
+    -- 友方玩家盯梢补充扫描：
+    -- 帧扫描只能看到有名字板的单位（友方名字板默认关闭），所以再用
+    -- 当前目标/鼠标悬停/小队/团队 等 unit token 做一次可靠扫描
+    if not foundFriendly and self.db.profile.enableFriendlyTargetAlert then
+        local watcher = self:ScanFriendlyWatchers()
+        if watcher then
+            friendlyName = watcher
+            foundFriendly = true
+        end
+    end
+
+    -- 优先显示危险的 OT 警告；否则若友方盯梢提醒开启则显示「有人偷瞄了你」
+    if foundHostile and self.db.profile.enableAggroAlert then
+        if now - (self.lastAggroAlert or 0) >= cooldown then
+            self:ShowAggroAlert(mobName)
+        end
+    elseif foundFriendly and self.db.profile.enableFriendlyTargetAlert then
+        if now - (self.lastFriendlyAlert or 0) >= cooldown then
+            self:ShowFriendlyTargetAlert(friendlyName)
+        end
     end
 end
 
@@ -376,6 +524,22 @@ function Automaton_AlertCombat:ShowAggroAlert(mobName)
             SpellStopCasting()
             CastSpellByName("渐隐术")
         end
+    end
+end
+
+-- ========== 友方盯梢提醒 ==========
+function Automaton_AlertCombat:ShowFriendlyTargetAlert(name)
+    self.lastFriendlyAlert = GetTime()
+
+    -- 设置显示文本
+    self.aggroText:SetText("有人偷瞄了你")
+    self.aggroSubText:SetText(name and (name .. " 正在注视着你") or "有人在盯着你")
+    self.aggroFadeTimer = 5  -- 显示5秒后淡出
+    self.aggroFrame:Show()
+
+    -- 播放提示音（如果启用，复用 OT 预警提示音开关）
+    if self.db.profile.aggroSound then
+        PlaySoundFile("Interface\\AddOns\\Automatonex\\Sound\\targetyou.ogg")
     end
 end
 
@@ -510,7 +674,12 @@ function Automaton_AlertCombat:CheckPetHealth()
     
     local health = UnitHealth("pet")
     local maxHealth = UnitHealthMax("pet")
-    
+
+    -- 宠物已死亡：血量为0会被误判成"血量不足0%"反复播报，这里直接跳过，死亡提示交给 CheckPetDeath
+    if maxHealth <= 0 or health <= 0 or UnitIsDead("pet") then
+        return
+    end
+
     if maxHealth > 0 then
         local healthPercent = (health / maxHealth) * 100
         
@@ -533,18 +702,28 @@ function Automaton_AlertCombat:CheckPetHealth()
 end
 
 function Automaton_AlertCombat:CheckPetDeath()
-    if GetTime() - self.lastPetDeathAlert < 10 then 
-        return 
+    if not UnitExists("pet") then
+        self.petWasDead = false
+        return
     end
-    if not UnitExists("pet") then 
-        return 
+
+    local health = UnitHealth("pet")
+
+    -- 宠物复活/血量恢复：重置死亡标志，下次死亡可再次播报
+    if health > 0 and not UnitIsDead("pet") then
+        self.petWasDead = false
+        return
     end
+
+    -- 本次死亡已经播报过，不再重复刷屏
+    if self.petWasDead then
+        return
+    end
+
     if not UnitAffectingCombat("player") then
         return
     end
-    
-    local health = UnitHealth("pet")
-    
+
     if health == 0 then
         self.frame.Bg:Hide()
         self.frame.text:SetText("！！主人我噶了！！")
@@ -552,6 +731,7 @@ function Automaton_AlertCombat:CheckPetDeath()
         self.frame:Show()
         self.stimer = 0
         self.lastPetDeathAlert = GetTime()
+        self.petWasDead = true
         
         if self.feedButton then
             self.feedButton:Hide()
@@ -563,18 +743,24 @@ function Automaton_AlertCombat:CheckPetDeath()
 end
 
 function Automaton_AlertCombat:CheckPetHappiness()
-    if not self.db.profile.enablePetHappiness then 
-        return 
+    if not self.db.profile.enablePetHappiness then
+        return
     end
-    if not UnitExists("pet") then 
-        return 
+    if not UnitExists("pet") then
+        return
     end
-    if GetTime() - self.lastPetHappinessAlert < 30 then 
-        return 
+    -- 宠物死亡时不播报快乐值（死亡期间喂食/心情提示无意义）
+    if UnitIsDead("pet") or UnitHealth("pet") <= 0 then
+        return
+    end
+    if GetTime() - self.lastPetHappinessAlert < 30 then
+        return
     end
     
     local happiness = GetPetHappiness()
     
+    -- 快乐值：1=不满(伤害75%) 2=满足(伤害100%) 3=快乐(伤害125%)
+    -- "不满"(1)和"满足"(2)都提示喂食（伤害已低于满值125%），"快乐"(3)才是最佳状态
     if happiness and happiness <= 2 then
         self.frame.Bg:Hide()
         self.frame.text:SetText("主人 我不开心")
@@ -641,19 +827,8 @@ end
 function Automaton_AlertCombat:InitPetFeeding()
     self.feedButton = nil
     Automaton_AlertCombat_CursorCache = nil
-    -- 兼容旧版存档：将旧 petFood 字段迁移到新字段
-    if self.db.profile.petFood and self.db.profile.petFood ~= "" then
-        self.db.profile.petFoodName = self.db.profile.petFood
-        self.db.profile.petFood = nil
-    end
-    self.db.profile.petFoodName = self.db.profile.petFoodName or nil
-    self.db.profile.petFoodTexture = self.db.profile.petFoodTexture or nil
-    self.db.profile.feedButtonPosition = self.db.profile.feedButtonPosition or {
-        point = "CENTER",
-        relativePoint = "CENTER", 
-        xOfs = 0,
-        yOfs = -100
-    }
+    -- 角色专属存储已在 OnInitialize 中初始化，无需在此迁移
+    -- 但为了兼容旧版存档（如果还有旧 petFood 字段，但我们已经迁移过了）
 end
 
 function Automaton_AlertCombat:CreateFeedButton()
@@ -694,9 +869,10 @@ function Automaton_AlertCombat:CreateFeedButton()
 
     self:RestoreFeedButtonPosition()
 
-    -- 恢复已保存的食物图标
-    if module.db.profile.petFoodTexture then
-        SetFeedButtonIcon(self.feedButton, module.db.profile.petFoodTexture)
+    -- 恢复已保存的食物图标（从角色专属存储）
+    local foodTexture = module.dbChar.AlertCombat.petFoodTexture
+    if foodTexture then
+        SetFeedButtonIcon(self.feedButton, foodTexture)
     else
         SetFeedButtonIcon(self.feedButton, nil)
     end
@@ -731,20 +907,25 @@ function Automaton_AlertCombat:CreateFeedButton()
     self.feedButton:SetScript("OnDragStop", function()
         module.feedButtonFrame:StopMovingOrSizing()
         local point, _, relativePoint, xOfs, yOfs = module.feedButtonFrame:GetPoint()
-        module.db.profile.feedButtonPosition = {
+        -- 保存到角色专属存储
+        module.dbChar.AlertCombat.feedButtonPosition = {
             point = point,
             relativePoint = relativePoint,
             xOfs = xOfs,
             yOfs = yOfs
         }
+        if Automaton.SaveDatabase then
+            Automaton.SaveDatabase("AutomatonDBChar")
+        end
     end)
 
     -- Tooltip
     self.feedButton:SetScript("OnEnter", function()
         GameTooltip:SetOwner(module.feedButton, "ANCHOR_TOP")
         GameTooltip:SetText("喂养宠物")
-        if module.db.profile.petFoodName then
-            GameTooltip:AddLine("食物: " .. module.db.profile.petFoodName, 0, 1, 0)
+        local foodName = module.dbChar.AlertCombat.petFoodName
+        if foodName then
+            GameTooltip:AddLine("食物: " .. foodName, 0, 1, 0)
             local count = module:CountFoodInBags()
             GameTooltip:AddLine("背包剩余: " .. count, 1, 1, 1)
         else
@@ -792,11 +973,11 @@ function Automaton_AlertCombat:PlaceFoodOnButton()
         return
     end
 
-    -- 保存食物信息
-    self.db.profile.petFoodName    = itemName
-    self.db.profile.petFoodTexture = itemTexture
+    -- 保存食物信息到角色专属存储
+    self.dbChar.AlertCombat.petFoodName    = itemName
+    self.dbChar.AlertCombat.petFoodTexture = itemTexture
     if Automaton.SaveDatabase then
-        Automaton.SaveDatabase("AutomatonDB")
+        Automaton.SaveDatabase("AutomatonDBChar")
     end
 
     -- 更新按钮图标和数量
@@ -808,10 +989,10 @@ end
 
 -- 清除已设置的食物
 function Automaton_AlertCombat:ClearFood()
-    self.db.profile.petFoodName = nil
-    self.db.profile.petFoodTexture = nil
+    self.dbChar.AlertCombat.petFoodName = nil
+    self.dbChar.AlertCombat.petFoodTexture = nil
     if Automaton.SaveDatabase then
-        Automaton.SaveDatabase("AutomatonDB")
+        Automaton.SaveDatabase("AutomatonDBChar")
     end
     SetFeedButtonIcon(self.feedButton, nil)
     SetItemButtonCount(self.feedButton, 0)
@@ -841,7 +1022,7 @@ end
 
 -- 统计背包中食物总数量
 function Automaton_AlertCombat:CountFoodInBags()
-    local foodName = self.db.profile.petFoodName
+    local foodName = self.dbChar.AlertCombat.petFoodName
     if not foodName then return 0 end
     local total = 0
     for bag = 0, NUM_BAG_SLOTS do
@@ -879,8 +1060,8 @@ end
 function Automaton_AlertCombat:RestoreFeedButtonPosition()
     if not self.feedButtonFrame then return end
 
-    if self.db.profile.feedButtonPosition then
-        local pos = self.db.profile.feedButtonPosition
+    local pos = self.dbChar.AlertCombat.feedButtonPosition
+    if pos then
         self.feedButtonFrame:ClearAllPoints()
         self.feedButtonFrame:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
     else
@@ -902,7 +1083,7 @@ function Automaton_AlertCombat:FeedPet()
         return
     end
 
-    local foodName = self.db.profile.petFoodName
+    local foodName = self.dbChar.AlertCombat.petFoodName
     if not foodName or foodName == "" then
         DEFAULT_CHAT_FRAME:AddMessage("|cffffff00[战斗提示]|r 请先将食物拖到喂食按钮上！", 1, 1, 0)
         return

@@ -16,7 +16,7 @@ Automaton_AutoOpenBag.options = {}
 function Automaton_AutoOpenBag:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("AutoOpenBag")
     Automaton:RegisterDefaults("AutoOpenBag", "profile", {
-        disabled = false,
+        disabled = true,
     })
     Automaton:SetDisabledAsDefault(self, "AutoOpenBag")
     

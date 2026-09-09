@@ -1,3 +1,4 @@
+
 local PURGE_INTERVAL             = 60 * 5; -- every 5 minutes remove names which are timed out.
 local nextPurgeCheck             = GetTime() + PURGE_INTERVAL;
 --local Gratuity = AceLibrary("Gratuity-2.0")
@@ -28,6 +29,8 @@ local CHANNELE_MSG_EVENT         = {
   CHAT_MSG_WHISPER = true,
   CHAT_MSG_HARDCORE = true,
   CHAT_MSG_LOOT = true,  -- 添加战利品消息
+  CHAT_MSG_PARTY = true,        -- 队伍频道（供频道选择使用）
+  CHAT_MSG_PARTY_LEADER = true, -- 队长说话（并入队伍频道）
 }
 -- local FACTION_COLOR = {
 --   ["BL"] = fontRed,
@@ -72,6 +75,8 @@ end
 local lastPopupTime = 0
 local lastPopupMessage = ""
 local POPUP_COOLDOWN = 0.5 -- 0.5秒的冷却时间，防止重复弹窗
+local SERVER_RESTART_COOLDOWN = 10 -- 服务器重启弹窗冷却（秒），避免倒计时每秒刷屏
+local lastServerRestartPopup = 0
 
 local function ShouldShowPopup(message)
     local currentTime = GetTime()
@@ -83,33 +88,55 @@ local function ShouldShowPopup(message)
     return true
 end
 
+-- 频道识别：把聊天事件映射为与"自动喊话"一致的频道 key（服务器基本就这几个频道）
+-- channelName 取全局 arg9（1.12 里 CHAT_MSG_CHANNEL 的 arg9 是不带编号的频道名，如 "世界"/"World"）
+local function CleanChat_GetChannelKey(event, channelName)
+    if event == "CHAT_MSG_YELL" then return "yell" end
+    if event == "CHAT_MSG_SAY" then return "say" end
+    if event == "CHAT_MSG_PARTY" or event == "CHAT_MSG_PARTY_LEADER" then return "party" end
+    if event == "CHAT_MSG_GUILD" then return "guild" end
+    if event == "CHAT_MSG_HARDCORE" then return "Hardcore" end
+    if event == "CHAT_MSG_CHANNEL" then
+        local name = channelName or ""
+        local nameLower = string.lower(name)
+        -- 世界频道：精确匹配或前缀匹配（排除防务频道）
+        if nameLower == "世界" or nameLower == "world" or nameLower == "世界频道" then
+            return "world"
+        end
+        if string.find(nameLower, "^世界") or string.find(nameLower, "^world") then
+            if not (string.find(nameLower, "防务") or string.find(nameLower, "defense")) then
+                return "world"
+            end
+        end
+        return "channel"  -- 其它自定义频道（交易/综合/组队频道等）
+    end
+    return nil
+end
+
 
 local Automaton_CleanChat = Automaton:NewModule("CleanChat")
 Automaton_CleanChat.modulename = "聊天增强"
 Automaton_CleanChat.moduledesc = "聊天增强，包含很多实用的功能，可以单独开启关闭。"
 Automaton_CleanChat.options = {
+  -- ===== 硬核频道 =====
+  header_hc = {
+    type = "header",
+    name = "硬核频道",
+    order = 10,
+  },
   HCFFrame = {
     type = "text",
     name = "设置HC显示窗口",
     desc = "指定HC频道消息显示在第一个聊天窗口1-9",
-    order = 1,
-    --order = 3, usage = L["keyword follow"],
+    order = 11,
     get = function() return Automaton_CleanChat.db.profile.HCFFrame end,
     set = function(v) Automaton_CleanChat.db.profile.HCFFrame = tonumber(v) end,
   },
-  -- HCFLevelFilter = {
-  --   type = "toggle",
-  --   name = "开启组队消息等级过滤",
-  --   desc = "频道组队消息等级过滤",
-  --   --order = 2,
-  --   get = function() return Automaton_CleanChat.db.profile.HCFLevelFilter end,
-  --   set = function(v) Automaton_CleanChat.db.profile.HCFLevelFilter = v end,
-  -- },
   onoff = {
     type = "toggle",
     name = "关闭HC频道消息",
     desc = "关闭HC频道消息，不再显示",
-    order = 2,
+    order = 12,
     get = function() return Automaton_CleanChat.db.profile.onoff end,
     set = function(v) Automaton_CleanChat.db.profile.onoff = v end,
   },
@@ -117,15 +144,36 @@ Automaton_CleanChat.options = {
     type = 'toggle',
     name = "硬核死亡弹窗",
     desc = "当有硬核玩家死亡时在屏幕中央弹窗显示",
-    order = 3,
+    order = 13,
     get = function() return Automaton_CleanChat.db.profile.hcDeathPopup end,
     set = function(v) Automaton_CleanChat.db.profile.hcDeathPopup = v end,
+  },
+  hcColour = {
+    type = "color",
+    name = "硬核频道颜色",
+    desc = "设置硬核频道消息的颜色",
+    order = 14,
+    hasAlpha = false,
+    get = function()
+        return unpack(Automaton_CleanChat.db.profile.hcColour)
+    end,
+    set = function(r, g, b, a)
+        Automaton_CleanChat.db.profile.hcColour = {r, g, b}
+        Automaton_CleanChat:Print("硬核频道颜色已更新")
+    end,
+  },
+
+  -- ===== 弹窗提醒 =====
+  header_popup = {
+    type = "header",
+    name = "弹窗提醒",
+    order = 20,
   },
   tradePopup = {
     type = 'toggle',
     name = "交易消息弹窗提醒",
     desc = "当有玩家交易物品时，在屏幕中央弹窗高亮显示",
-    order = 4,
+    order = 21,
     get = function() return Automaton_CleanChat.db.profile.tradePopup end,
     set = function(v) Automaton_CleanChat.db.profile.tradePopup = v end,
   },
@@ -133,6 +181,7 @@ Automaton_CleanChat.options = {
     type = 'toggle',
     name = "弹窗显示有自己名字的聊天",
     desc = "当聊天中包含自己的名字时屏幕中间弹窗显示",
+    order = 22,
     get = function() return Automaton_CleanChat.db.profile.CleanChat_Popup end,
     set = function(v) Automaton_CleanChat.db.profile.CleanChat_Popup = v end,
   },
@@ -140,136 +189,66 @@ Automaton_CleanChat.options = {
     type = 'toggle',
     name = "关键字屏幕中央提醒",
     desc = "当出现关键字时在屏幕中央显示整句聊天内容",
+    order = 23,
     get = function() return Automaton_CleanChat.db.profile.showpopup end,
     set = function(v) Automaton_CleanChat.db.profile.showpopup = v end,
   },
-  -- ShowChatTime = {
-  --   type = 'toggle',
-  --   name = "显示时间戳",
-  --   desc = "为每一条聊天添加时间",
-  --   get = function() return Automaton_CleanChat.db.profile.ShowChatTime end,
-  --   set = function(v) Automaton_CleanChat.db.profile.ShowChatTime = v end,
-  -- },
-  
-  clickinvite = {
-    type = 'toggle',
-    name = "关键字组队链接",
-    desc = "聊天中包含INV,组我等关键字时生成组队链接",
-    get = function() return Automaton_CleanChat.db.profile.clickinvite end,
-    set = function(v) Automaton_CleanChat.db.profile.clickinvite = v end,
+  keywordChannel = {
+    type = 'text',
+    name = "关键字监听频道",
+    desc = "选择关键字高亮和弹窗提醒监听的频道，选\"全部频道\"则监听所有频道",
+    order = 24,
+    get = function() return Automaton_CleanChat.db.profile.keywordChannel end,
+    set = function(v) Automaton_CleanChat.db.profile.keywordChannel = v end,
+    validate = {
+      ["all"] = "全部频道",
+      ["yell"] = "喊话频道",
+      ["say"] = "说",
+      ["party"] = "队伍",
+      ["guild"] = "公会",
+      ["world"] = "世界频道",
+      ["Hardcore"] = "硬核",
+    },
   },
 
-  -- CopyChatTime = {
-  --   type = 'toggle',
-  --   name = "复制聊天内容",
-  --   desc = "单击时间戳复制本条聊天内容，依赖开启时间戳",
-  --   get = function() return Automaton_CleanChat.db.profile.CopyChatTime end,
-  --   set = function(v) Automaton_CleanChat.db.profile.CopyChatTime = v end,
-  -- },
-  -- whispersound = {
-  --   type = 'toggle',
-  --   name = "私聊声音提醒",
-  --   desc = "有私聊你的消息时，发出提示音",
-  --   get = function() return Automaton_CleanChat.db.profile.whispersound end,
-  --   set = function(v) Automaton_CleanChat.db.profile.whispersound = v end,
-  -- },
-  
-  highlightroll = {
-    type = 'toggle',
-    name = "高亮自己的ROLL点信息",
-    desc = "高亮显示自己的roll点信息，装绑自动ROLL点和自己手动ROLL点信息",
-    get = function() return Automaton_CleanChat.db.profile.highlightroll end,
-    set = function(v) Automaton_CleanChat.db.profile.highlightroll = v end,
+  -- ===== 关键字管理 =====
+  header_keyword = {
+    type = "header",
+    name = "关键字管理",
+    order = 30,
   },
-  
-  -- 战利品庆祝功能
-  lootCelebration = {
-    type = "toggle",
-    name = "战利品庆祝",
-    desc = "获得特定物品时自动庆祝",
-    order = 8,
-    get = function() return Automaton_CleanChat.db.profile.lootCelebration end,
-    set = function(v) Automaton_CleanChat.db.profile.lootCelebration = v end,
-  },
-  
-  -- 添加高亮颜色选择器
   highlightColour = {
     type = "color",
     name = "高亮关键字颜色",
     desc = "设置高亮关键字的颜色",
-    order = 10,
+    order = 31,
     hasAlpha = false,
-    get = function() 
-        return unpack(Automaton_CleanChat.db.profile.highlightColour) 
+    get = function()
+        return unpack(Automaton_CleanChat.db.profile.highlightColour)
     end,
-    set = function(r, g, b, a) 
+    set = function(r, g, b, a)
         Automaton_CleanChat.db.profile.highlightColour = {r, g, b}
         Automaton_CleanChat:Print("高亮颜色已更新")
     end,
   },
-  
-  -- 添加硬核频道颜色选择器
-  hcColour = {
-    type = "color",
-    name = "硬核频道颜色",
-    desc = "设置硬核频道消息的颜色",
-    order = 11,
-    hasAlpha = false,
-    get = function() 
-        return unpack(Automaton_CleanChat.db.profile.hcColour) 
-    end,
-    set = function(r, g, b, a) 
-        Automaton_CleanChat.db.profile.hcColour = {r, g, b}
-        Automaton_CleanChat:Print("硬核频道颜色已更新")
-    end,
-  },
-  
-  -- 添加ROLL点颜色选择器
-  rollColour = {
-    type = "color",
-    name = "ROLL点高亮颜色",
-    desc = "设置自己ROLL点信息的高亮颜色",
-    order = 12,
-    hasAlpha = false,
-    get = function() 
-        return unpack(Automaton_CleanChat.db.profile.rollColour) 
-    end,
-    set = function(r, g, b, a) 
-        Automaton_CleanChat.db.profile.rollColour = {r, g, b}
-        Automaton_CleanChat:Print("ROLL点颜色已更新")
-    end,
-  },
-  
-  -- 添加颜色重置按钮
-  resetColors = {
-    type = "execute",
-    name = "重置颜色",
-    desc = "将所有颜色重置为默认值",
-    order = 13,
-    func = function()
-        Automaton_CleanChat.db.profile.highlightColour = {unpack(DEFAULT_COLORS.highlight)}
-        Automaton_CleanChat.db.profile.hcColour = {unpack(DEFAULT_COLORS.hardcore)}
-        Automaton_CleanChat.db.profile.rollColour = {unpack(DEFAULT_COLORS.roll)}
-        Automaton_CleanChat:Print("所有颜色已重置为默认值")
-    end,
-  },
-  
   HighlightText = {
     type = "group",
     name = "高亮关键字",
     desc = "聊天内容会高亮显示的关键字",
+    order = 32,
     args = {
       list = {
         type = "execute",
         name = "打印关键字列表",
         desc = "打印输出所有已经保持的关键字列表",
+        order = 1,
         func = function() Automaton_CleanChat:ListKeyworld(Automaton_CleanChat.db.profile.THighlightText) end
       },
       add = {
         type = "text",
         name = "添加关键字（按回车确认）",
         desc = "添加指定关键字，一次添加一个关键字，可以说是一个字也可以是词语，按回车确认输入",
-        order = 1,
+        order = 2,
         usage = "<一次一个关键字>",
         get = false,
         set = function(v) Automaton_CleanChat:AddKeyword(Automaton_CleanChat.db.profile.THighlightText, v) end,
@@ -278,7 +257,7 @@ Automaton_CleanChat.options = {
        type = "text",
        name = "删除关键字（按回车确认）",
        desc = "删除指定关键字...",
-       order = 2,
+       order = 3,
        usage = "<一次一个关键字>",
        get = false,
        set = function(v) Automaton_CleanChat:RemoveKeyword(Automaton_CleanChat.db.profile.THighlightText, v) end,
@@ -287,20 +266,22 @@ Automaton_CleanChat.options = {
         type = "execute",
         name = "清除全部关键字",
         desc = "清除全部关键字，清空关键字列表。",
+        order = 4,
         func = function() Automaton_CleanChat:PurgeTHighlightText() end
       }
     },
   },
   FilterKeyworld = {
-
     type = "group",
     name = "屏蔽关键字",
     desc = "屏蔽聊天内容的关键字",
+    order = 33,
     args = {
       hasunitname = {
         type = 'toggle',
         name = "关键字对角色名有效",
         desc = "屏蔽聊天内容的关键字是对包含关键字的角色名生效",
+        order = 1,
         get = function() return Automaton_CleanChat.db.profile.hasunitname end,
         set = function(v) Automaton_CleanChat.db.profile.hasunitname = v end,
       },
@@ -308,13 +289,14 @@ Automaton_CleanChat.options = {
         type = "execute",
         name = "打印关键字列表",
         desc = "打印输出所有已经保持的关键字列表",
+        order = 2,
         func = function() Automaton_CleanChat:ListKeyworld(Automaton_CleanChat.db.profile.TFilterKeyworld) end
       },
       add = {
         type = "text",
         name = "添加关键字（按回车确认）",
         desc = "添加指定关键字，一次添加一个关键字，可以说是一个字也可以是词语，按回车确认输入",
-        order = 1,
+        order = 3,
         usage = "<一次一个关键字>",
         get = false,
         set = function(v) Automaton_CleanChat:AddKeyword(Automaton_CleanChat.db.profile.TFilterKeyworld, v) end,
@@ -323,7 +305,7 @@ Automaton_CleanChat.options = {
         type = "text",
         name = "删除关键字（按回车确认）",
         desc = "删除指定关键字，一次添加一个关键字，按回车确认输入（必须于输入时相同）",
-        order = 2,
+        order = 4,
         usage = "<一次一个关键字>",
         get = false,
         set = function(v) Automaton_CleanChat:RemoveKeyword(Automaton_CleanChat.db.profile.TFilterKeyworld, v) end,
@@ -332,17 +314,68 @@ Automaton_CleanChat.options = {
         type = "execute",
         name = "清除全部关键字",
         desc = "清除全部关键字，清空关键字列表。",
+        order = 5,
         func = function() Automaton_CleanChat:PurgeTFilterKeyworld() end
       }
     },
   },
-  
-  -- 战利品庆祝物品管理
+
+  -- ===== ROLL点与组队 =====
+  header_roll = {
+    type = "header",
+    name = "ROLL点与组队",
+    order = 40,
+  },
+  highlightroll = {
+    type = 'toggle',
+    name = "高亮自己的ROLL点信息",
+    desc = "高亮显示自己的roll点信息，装绑自动ROLL点和自己手动ROLL点信息",
+    order = 41,
+    get = function() return Automaton_CleanChat.db.profile.highlightroll end,
+    set = function(v) Automaton_CleanChat.db.profile.highlightroll = v end,
+  },
+  rollColour = {
+    type = "color",
+    name = "ROLL点高亮颜色",
+    desc = "设置自己ROLL点信息的高亮颜色",
+    order = 42,
+    hasAlpha = false,
+    get = function()
+        return unpack(Automaton_CleanChat.db.profile.rollColour)
+    end,
+    set = function(r, g, b, a)
+        Automaton_CleanChat.db.profile.rollColour = {r, g, b}
+        Automaton_CleanChat:Print("ROLL点颜色已更新")
+    end,
+  },
+  clickinvite = {
+    type = 'toggle',
+    name = "关键字组队链接",
+    desc = "聊天中包含INV,组我等关键字时生成组队链接",
+    order = 43,
+    get = function() return Automaton_CleanChat.db.profile.clickinvite end,
+    set = function(v) Automaton_CleanChat.db.profile.clickinvite = v end,
+  },
+
+  -- ===== 战利品庆祝 =====
+  header_loot = {
+    type = "header",
+    name = "战利品庆祝",
+    order = 50,
+  },
+  lootCelebration = {
+    type = "toggle",
+    name = "战利品庆祝",
+    desc = "获得特定物品时自动庆祝",
+    order = 51,
+    get = function() return Automaton_CleanChat.db.profile.lootCelebration end,
+    set = function(v) Automaton_CleanChat.db.profile.lootCelebration = v end,
+  },
   lootCelebrationItems = {
     type = "group",
     name = "庆祝物品列表",
     desc = "设置获得哪些物品时庆祝",
-    order = 14,
+    order = 52,
     args = {
       addItem = {
         type = "text",
@@ -351,8 +384,8 @@ Automaton_CleanChat.options = {
         order = 1,
         usage = "<物品名称>",
         get = false,
-        set = function(v) 
-          Automaton_CleanChat:AddLootCelebrationItem(v) 
+        set = function(v)
+          Automaton_CleanChat:AddLootCelebrationItem(v)
         end,
       },
       removeItem = {
@@ -362,8 +395,8 @@ Automaton_CleanChat.options = {
         order = 2,
         usage = "<物品名称>",
         get = false,
-        set = function(v) 
-          Automaton_CleanChat:RemoveLootCelebrationItem(v) 
+        set = function(v)
+          Automaton_CleanChat:RemoveLootCelebrationItem(v)
         end,
       },
       listItems = {
@@ -371,8 +404,8 @@ Automaton_CleanChat.options = {
         name = "列出所有庆祝物品",
         desc = "显示当前设置的庆祝物品列表",
         order = 3,
-        func = function() 
-          Automaton_CleanChat:ListLootCelebrationItems() 
+        func = function()
+          Automaton_CleanChat:ListLootCelebrationItems()
         end
       },
       resetItems = {
@@ -396,8 +429,40 @@ Automaton_CleanChat.options = {
       },
     }
   },
-}
 
+  -- ===== 外观设置 =====
+  header_appearance = {
+    type = "header",
+    name = "外观设置",
+    order = 60,
+  },
+  chatFontHeights = {
+    type = "text",
+    name = "聊天字号范围",
+    desc = "设置可用字号列表，用英文逗号分隔，例如：10,12,14,16,18,20,22,24",
+    order = 61,
+    get = function()
+        return Automaton_CleanChat.db.profile.chatFontHeightsString
+    end,
+    set = function(v)
+        Automaton_CleanChat.db.profile.chatFontHeightsString = v
+        Automaton_CleanChat:ApplyChatFontHeights(v)
+        Automaton_CleanChat:Print("聊天字号范围已更新: " .. v)
+    end,
+  },
+  resetColors = {
+    type = "execute",
+    name = "重置颜色",
+    desc = "将所有颜色重置为默认值",
+    order = 62,
+    func = function()
+        Automaton_CleanChat.db.profile.highlightColour = {unpack(DEFAULT_COLORS.highlight)}
+        Automaton_CleanChat.db.profile.hcColour = {unpack(DEFAULT_COLORS.hardcore)}
+        Automaton_CleanChat.db.profile.rollColour = {unpack(DEFAULT_COLORS.roll)}
+        Automaton_CleanChat:Print("所有颜色已重置为默认值")
+    end,
+  },
+}
 
 ------------------------------
 --      Initialization      --
@@ -423,6 +488,7 @@ function Automaton_CleanChat:OnInitialize()
     showpopup = true,
     hcDeathPopup = true, -- 添加硬核死亡弹窗开关，默认开启
     tradePopup = true,   -- 交易消息弹窗开关，默认开启
+    keywordChannel = "all", -- 关键字高亮/弹窗监听的频道，默认全部
     THighlightText = {},
     TFilterKeyworld = {},
 
@@ -447,12 +513,16 @@ function Automaton_CleanChat:OnInitialize()
     highlightColour = {unpack(DEFAULT_COLORS.highlight)},
     hcColour = {unpack(DEFAULT_COLORS.hardcore)},
     rollColour = {unpack(DEFAULT_COLORS.roll)},
+    -- 新增：聊天字号范围默认值
+    chatFontHeightsString = "10,12,14,16,18,20,22,24",
   })
   Automaton:SetDisabledAsDefault(self, "CleanChat")
   self:RegisterOptions(self.options)
   self:HideButtons()      --隐藏无用按钮
   self:SetupPrefix();     --频道缩写
   self:SetupMouseWheel(); --初始化鼠标滚轮
+  -- 应用字号范围设置
+  self:ApplyChatFontHeights()
   --移除无效缓存
   --self:CacheRemoveOlderEntries();
   --self._AddMessage = ChatFrame1.AddMessage
@@ -460,11 +530,20 @@ end
 
 function Automaton_CleanChat:OnEnable()
   self:Hook("ChatFrame_OnEvent")
+  self:RegisterEvent("VARIABLES_LOADED", "OnEvent")  -- 监听变量加载事件，确保小退后重新应用
+  self:ApplyChatFontHeights()             -- 再次应用，确保生效
 end
 
 function Automaton_CleanChat:OnDisable()
   self:UnhookAll()
   self:UnregisterAllEvents()
+end
+
+-- 新增：事件处理
+function Automaton_CleanChat:OnEvent(event, ...)
+  if event == "VARIABLES_LOADED" then
+    self:ApplyChatFontHeights()
+  end
 end
 
 function Automaton_CleanChat:ListKeyworld(t)
@@ -478,14 +557,21 @@ function Automaton_CleanChat:ListKeyworld(t)
   end
 end
 
+-- ========== 修改1：AddKeyword 过滤空字符串 ==========
 function Automaton_CleanChat:AddKeyword(t, v)
-  tinsert(t, v)
+  if not v then return end
+  v = gsub(v, "^%s*(.-)%s*$", "%1")  -- 去除首尾空格
+  if v ~= "" then
+    tinsert(t, v)
+  end
 end
 
+-- ========== 修改2：RemoveKeyword 使用 table.remove 保持紧凑 ==========
 function Automaton_CleanChat:RemoveKeyword(t, item)
-  for k, v in pairs(t) do
-    if v == item then
-      t[k] = nil
+  if not item or item == "" then return end
+  for i = table.getn(t), 1, -1 do
+    if t[i] == item then
+      table.remove(t, i)
     end
   end
 end
@@ -498,6 +584,22 @@ end
 function Automaton_CleanChat:PurgeTHighlightText(t)
   self:Print("共清理关键字：" .. table.getn(Automaton_CleanChat.db.profile.THighlightText) .. " 个")
   Automaton_CleanChat.db.profile.THighlightText = {}
+end
+
+-- ===== 新增：应用聊天字号范围 =====
+function Automaton_CleanChat:ApplyChatFontHeights(str)
+    if not str then str = self.db.profile.chatFontHeightsString end
+    local nums = {}
+    for num in string.gmatch(str, "[^,]+") do
+        local n = tonumber(num)
+        if n then table.insert(nums, n) end
+    end
+    -- 使用 table.getn 替代 # 避免解析错误
+    if table.getn(nums) > 0 then
+        CHAT_FONT_HEIGHTS = nums
+    else
+        self:Print("无效的字号列表，请用英文逗号分隔数字")
+    end
 end
 
 -- works only for numbers between 0-255;
@@ -621,7 +723,23 @@ function Automaton_CleanChat:ChatFrame_OnEvent(event)
     
     if (string.find(msg, "该副本中仍有玩家")) and (GetNumRaidMembers()>0 or GetNumPartyMembers()>0) then
         SendChatMessage('正在重置副本，请尽快出本！','PARTY')
-    end    
+    end
+
+    -- 服务器重启倒计时弹窗（无需开关，10 秒内只弹一次避免刷屏）
+    if string.find(msg, "即将重启动") or string.find(msg, "即将重启") then
+      local now = GetTime()
+      if (now - lastServerRestartPopup) >= SERVER_RESTART_COOLDOWN then
+        lastServerRestartPopup = now
+        -- 兼容 "剩余时间25 Second" / "剩余时间 25 Second" / "25 Second"
+        local sec = string.match(msg, "剩余时间%s*(%d+)%s*[Ss]econds?")
+        if not sec then
+          sec = string.match(msg, "(%d+)%s*[Ss]econds?")
+        end
+        local display = sec and ("服务器即将重启：剩余 " .. sec .. " 秒") or "服务器即将重启"
+        UIErrorsFrame:AddMessage(display, 1.0, 0.2, 0.2, 1.0, 5.0) -- 红色，持续 5 秒
+        PlaySound("FriendJoinGame")
+      end
+    end
   end
   
   -- 处理战利品消息
@@ -638,7 +756,10 @@ function Automaton_CleanChat:ChatFrame_OnEvent(event)
   -- Print(arg9..arg1) end
   if (CHANNELE_MSG_EVENT[event] and arg2 and arg1 and not (arg9 and string.lower(arg9) == "lft")) then
     if self:FilterKeyworld(arg1, arg2) then return end
-    arg1 = self:HighlightText(arg1)
+    local selectedChannel = self.db.profile.keywordChannel or "all"
+    if selectedChannel == "all" or CleanChat_GetChannelKey(event, arg9) == selectedChannel then
+        arg1 = self:HighlightText(arg1)
+    end
     arg1 = self:SpellLink(arg1)
     self:HighlightSelfText(arg1, arg2)
   end
@@ -675,7 +796,10 @@ end
     
     -- 使用配置的硬核频道颜色
     local hcHex = RGBToHex(self.db.profile.hcColour)
-    local msg = "|cff" .. hcHex .. arg1 .. "|r"  -- 只对消息内容应用颜色
+    -- 正文里物品/任务链接、关键词高亮都自带 |r，会把后续文字重置回白色基础色；
+    -- 在每个 |r 后补回硬核色 (参考 pfUI 对密语的处理 chat.lua:811)
+    local body = string.gsub(arg1, "|r", "|r|cff" .. hcHex)
+    local msg = "|cff" .. hcHex .. body .. "|r"  -- 只对消息内容应用颜色
     local output = "|cff" .. hcHex .. "[核] |Hplayer:" .. arg2 .. "|h[" .. arg2 .. "]|h " .. msg
 
     if self.db.profile.onoff then
@@ -782,6 +906,7 @@ function Automaton_CleanChat:LFT(t)
     return t
 end
 
+-- ========== 修改3：HighlightText 增加 nil 检查，跳过空关键字 ==========
 function Automaton_CleanChat:HighlightText(msg)
   if self.db.profile.HighlightText and self.db.profile.THighlightText and table.getn(self.db.profile.THighlightText) > 0 then
     -- 使用配置的高亮颜色
@@ -791,12 +916,15 @@ function Automaton_CleanChat:HighlightText(msg)
     local foundKeyword = false
     local originalMsg = msg
 
-    -- 提前将关键字列表转换为小写
+    -- 提前将关键字列表转换为小写，同时过滤掉 nil 或空字符串
     local lowerKeywords = {}
     for i = 1, table.getn(self.db.profile.THighlightText) do
       local keyword = self.db.profile.THighlightText[i]
-      lowerKeywords[table.getn(lowerKeywords) + 1] = string.lower(keyword)
+      if keyword and keyword ~= "" then
+        lowerKeywords[table.getn(lowerKeywords) + 1] = string.lower(keyword)
+      end
     end
+    if table.getn(lowerKeywords) == 0 then return msg end  -- 没有有效关键字则直接返回
 
     -- 提前将消息转换为小写
     local lowerMsg = string.lower(msg)
@@ -841,7 +969,7 @@ function Automaton_CleanChat:HighlightText(msg)
       local speaker = arg2 or "未知"
       local highlightedMsg = originalMsg
       
-      -- 高亮关键字
+      -- 高亮关键字（使用过滤后的列表）
       for i = 1, table.getn(lowerKeywords) do
         local lowerScan = lowerKeywords[i]
         local startPos, endPos = string.find(string.lower(highlightedMsg), lowerScan)
@@ -872,7 +1000,7 @@ function Automaton_CleanChat:HighlightText(msg)
   return msg
 end
 
---关键字过滤
+-- ========== 修改4：FilterKeyworld 增加 nil 检查 ==========
 function Automaton_CleanChat:FilterKeyworld(msg, unit)
   -- 修改：自身发出的信息不受屏蔽关键字影响
   if unit == playerName then
@@ -885,7 +1013,7 @@ function Automaton_CleanChat:FilterKeyworld(msg, unit)
       texts = unit .. msg
     end
     for _, text in pairs(Automaton_CleanChat.db.profile.TFilterKeyworld) do
-      if strfind(texts, text) then
+      if text and text ~= "" and strfind(texts, text) then
         return true
       end
     end
@@ -928,22 +1056,30 @@ function Automaton_CleanChat:ProcessLootMessage(msg)
   
   -- 检查用户配置的物品列表
   if self.db.profile.lootCelebrationItems and table.getn(self.db.profile.lootCelebrationItems) > 0 then
+    -- 从消息中提取实际拾取的物品名（物品链接 [名字] 中的完整名字）
+    local lootedName = string.match(msg, "%[(.-)%]")
+
     -- 检查是否是自己拾取
-    if string.find(msg, "你获得了物品：") or string.find(msg, "你得到了物品：") then
-      for _, itemName in ipairs(self.db.profile.lootCelebrationItems) do
-        if string.find(msg, itemName) then
-          DoEmote("CHEER")
-          break
+    if string.find(msg, "你获得了物品：", 1, true) or string.find(msg, "你得到了物品：", 1, true) then
+      if lootedName then
+        for _, itemName in ipairs(self.db.profile.lootCelebrationItems) do
+          -- 精确匹配：物品名完全相等才庆祝（避免"恶魔布"误命中"恶魔布披风"）
+          if lootedName == itemName then
+            DoEmote("CHEER")
+            PlaySoundFile("Interface\\AddOns\\Automatonex\\Sound\\ding.ogg")
+            break
+          end
         end
       end
     end
-    
+
     -- 处理队友拾取（可选）
-    local playerNameFound, itemName = string.match(msg, "(.+)拾取了物品：(.+)")
-    if playerNameFound and itemName and playerNameFound ~= UnitName("player") then
+    local playerNameFound, itemLink = string.match(msg, "(.+)拾取了物品：(.+)")
+    if playerNameFound and itemLink and playerNameFound ~= UnitName("player") then
+      local mateLootedName = string.match(itemLink, "%[(.-)%]") or itemLink
       for _, item in ipairs(self.db.profile.lootCelebrationItems) do
-        if string.find(itemName, item) then
-          DEFAULT_CHAT_FRAME:AddMessage(format("|cffffcc00[恭喜]|r |cff00ffff%s|r 获得了稀有物品: |cff00ff00%s|r！", 
+        if mateLootedName == item then
+          DEFAULT_CHAT_FRAME:AddMessage(format("|cffffcc00[恭喜]|r |cff00ffff%s|r 获得了稀有物品: |cff00ff00%s|r！",
             playerNameFound, item))
           break
         end

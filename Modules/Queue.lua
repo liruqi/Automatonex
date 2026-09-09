@@ -33,11 +33,13 @@ Automaton_Queue.moduledesc = L["Options for accepting Battleground queues."]
 Automaton_Queue.options = {
 	delay = {
 		type = 'toggle', name = L["Delay"], desc = L["With this option enabled, automatic battleground entry is delayed for 100 seconds."],
+		order = 2,
 		get = function() return Automaton_Queue.db.profile.delay end,
 		set = function(v) Automaton_Queue.db.profile.delay = v end,
 	},
 	join = {
 		type = 'toggle', name = L["Join"], desc = L["Joins battleground queues when the battlefield window is displayed."],
+		order = 3,
 		get = function() return Automaton_Queue:IsEventRegistered("BATTLEFIELDS_SHOW") end,
 		set = function(v)
 			if v then

@@ -742,7 +742,7 @@ function Automaton_RandomMount:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("RandomMount")
     -- 注册 profile 默认值（模块禁用状态，跨角色）
     Automaton:RegisterDefaults("RandomMount", "profile", {
-        disabled = false,
+        disabled = true,
     })
     -- 注册 char 默认值（角色特定数据）
     Automaton:RegisterDefaults("RandomMount", "char", {

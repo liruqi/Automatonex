@@ -6,28 +6,132 @@ assert(Automaton, "Automaton not found!")
 
 local Automaton_AutoNeed = Automaton:NewModule("AutoNeed")
 local self               = Automaton_AutoNeed
-local needvaule          = { ["需求"] = 1, ["贪婪"] = 2, ["放弃"] = 0 }
+local needvaule          = { ["需求"] = 1, ["贪婪"] = 2, ["放弃"] = 0, ["不选择"] = -1 }
 local function set(field, value)
 	self.db.char[field] = value
 end
 local function get(field)
-	--Printd(self.db.char[field])
-	return self.db.char[field]
+	-- 优先读 char，未初始化时回退到 profile 默认值（如 rolltype 默认"贪婪"）
+	return self.db.char[field] or self.db.profile[field]
+end
+
+-- 兼容布局差异：quality 两布局都在第 3 位；equipLoc 扫描 "INVTYPE_" 字符串
+local function GetItemQualityAndEquipLoc(itemID)
+	local info = { GetItemInfo(itemID) }
+	local quality = info[3]
+	local equipLoc
+	for i = 1, table.getn(info) do
+		local v = info[i]
+		if type(v) == "string" and (v == "" or string.sub(v, 1, 8) == "INVTYPE_") then
+			equipLoc = v
+		end
+	end
+	return quality, equipLoc
 end
 
 Automaton_AutoNeed.modulename = "自动需求物品"
 Automaton_AutoNeed.moduledesc = "队伍/团队拾取时自动需求指定物品"
 Automaton_AutoNeed.options = {
 
-	rolltype = {
-		name = "默认需求类型",
-		desc = "未单独设置物品的默认需求类型（需求/贪婪/放弃）",
-		type = "text",
-		order = 1,
-		get = get,
-		set = set,
-		validate = { "需求", "贪婪", "放弃" },
-		passValue = "rolltype",
+	["按品质自动需求"] = {
+		type = "group",
+		name = "按品质自动需求",
+		desc = "按装备品质（紫/蓝/绿）自动需求可装备物品；开启后对所有可装备物品生效",
+		order = 2,
+		args = {
+			enable = {
+				name = "模组开关",
+				desc = "开启按品质自动需求功能（紫/蓝/绿通用装备，默认关闭）",
+				type = "toggle",
+				order = 1,
+				get = function() return self.db.char["品质_enable"] end,
+				set = function(v) self.db.char["品质_enable"] = v end,
+			},
+			purple = {
+				name = "紫装需求类型",
+				desc = "紫色（史诗）可装备物品的默认需求类型（需求/贪婪/放弃/不选择，不选择=不自动掷骰，保留手动选择）",
+				type = "text",
+				order = 2,
+				get = get,
+				set = set,
+				validate = { "需求", "贪婪", "放弃", "不选择" },
+				passValue = "紫装_rolltype",
+			},
+			blue = {
+				name = "蓝装需求类型",
+				desc = "蓝色（稀有）可装备物品的默认需求类型（需求/贪婪/放弃/不选择，不选择=不自动掷骰，保留手动选择）",
+				type = "text",
+				order = 3,
+				get = get,
+				set = set,
+				validate = { "需求", "贪婪", "放弃", "不选择" },
+				passValue = "蓝装_rolltype",
+			},
+			green = {
+				name = "绿装需求类型",
+				desc = "绿色（优秀）可装备物品的默认需求类型（需求/贪婪/放弃/不选择，不选择=不自动掷骰，保留手动选择）",
+				type = "text",
+				order = 4,
+				get = get,
+				set = set,
+				validate = { "需求", "贪婪", "放弃", "不选择" },
+				passValue = "绿装_rolltype",
+			},
+		},
+	},
+
+	["自定义物品管理"] = {
+		type = "group",
+		name = "自定义物品管理",
+		desc = "自定义物品的默认需求类型与管理",
+		order = 3,
+		args = {
+			rolltype = {
+				name = "默认需求类型",
+				desc = "未单独设置物品的默认需求类型（需求/贪婪/放弃/不选择，不选择=不自动掷骰，保留手动选择）",
+				type = "text",
+				order = 1,
+				get = get,
+				set = set,
+				validate = { "需求", "贪婪", "放弃", "不选择" },
+				passValue = "rolltype",
+			},
+			custom_item_add = {
+				type = "text",
+				name = "添加自定义物品",
+				desc = "输入物品ID添加到自动需求列表",
+				order = 2,
+				get = false,
+				set = function(v) self:AddItem(v) end,
+				usage = "输入物品ID后按回车",
+			},
+			custom_item_remove = {
+				type = "text",
+				name = "移除自定义物品",
+				desc = "输入物品ID从自动需求列表中移除",
+				order = 3,
+				get = false,
+				set = function(v) self:DelItem(v) end,
+				usage = "输入物品ID后按回车",
+			},
+			custom_item_list = {
+				type = "execute",
+				name = "查看自定义物品列表",
+				desc = "显示所有已添加的自定义物品",
+				order = 4,
+				func = function() self:PrintAll() end,
+			},
+			custom_item_clear = {
+				type = "execute",
+				name = "清除所有自定义物品",
+				desc = "一键清除所有自定义物品设置",
+				order = 5,
+				func = function() 
+					self.db.char.autoneedsDB = {}
+					print("|cffffff00已清除所有自定义物品！|r", "automaton")
+				end,
+			},
+		},
 	},
 	
 	separator1 = {
@@ -58,7 +162,7 @@ Automaton_AutoNeed.options = {
 				order = 5,
 				get = function() return self.db.char["item_4500"] or "需求" end,
 				set = function(v) self.db.char["item_4500"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			item_51217 = {
 				name = "幻化币",
@@ -67,7 +171,7 @@ Automaton_AutoNeed.options = {
 				order = 10,
 				get = function() return self.db.char["item_51217"] or "需求" end,
 				set = function(v) self.db.char["item_51217"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			item_12843 = {
 				name = "堕落者的天灾石",
@@ -76,7 +180,7 @@ Automaton_AutoNeed.options = {
 				order = 15,
 				get = function() return self.db.char["item_12843"] or "需求" end,
 				set = function(v) self.db.char["item_12843"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			item_61197 = {
 				name = "褪色的梦境碎片",
@@ -85,7 +189,7 @@ Automaton_AutoNeed.options = {
 				order = 20,
 				get = function() return self.db.char["item_61197"] or "需求" end,
 				set = function(v) self.db.char["item_61197"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			item_61198 = {
 				name = "小型梦境碎片",
@@ -94,7 +198,7 @@ Automaton_AutoNeed.options = {
 				order = 30,
 				get = function() return self.db.char["item_61198"] or "需求" end,
 				set = function(v) self.db.char["item_61198"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			item_61199 = {
 				name = "明亮梦境碎片",
@@ -103,7 +207,7 @@ Automaton_AutoNeed.options = {
 				order = 40,
 				get = function() return self.db.char["item_61199"] or "需求" end,
 				set = function(v) self.db.char["item_61199"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			item_20381 = {
 				name = "梦幻龙鳞",
@@ -112,7 +216,7 @@ Automaton_AutoNeed.options = {
 				order = 50,
 				get = function() return self.db.char["item_20381"] or "需求" end,
 				set = function(v) self.db.char["item_20381"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			item_12662 = {
 				name = "恶魔符文",
@@ -121,7 +225,7 @@ Automaton_AutoNeed.options = {
 				order = 60,
 				get = function() return self.db.char["item_12662"] or "需求" end,
 				set = function(v) self.db.char["item_12662"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			item_50203 = {
 				name = "腐化之沙",
@@ -130,7 +234,7 @@ Automaton_AutoNeed.options = {
 				order = 70,
 				get = function() return self.db.char["item_50203"] or "需求" end,
 				set = function(v) self.db.char["item_50203"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			item_7082 = {
 				name = "空气精华",
@@ -139,7 +243,7 @@ Automaton_AutoNeed.options = {
 				order = 80,
 				get = function() return self.db.char["item_7082"] or "需求" end,
 				set = function(v) self.db.char["item_7082"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 		},
 	},
@@ -164,7 +268,7 @@ Automaton_AutoNeed.options = {
 				order = 2,
 				get = function() return self.db.char["卡拉赞_arcane"] or "需求" end,
 				set = function(v) self.db.char["卡拉赞_arcane"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			overloaded = {
 				name = "过载魔法能量需求类型",
@@ -173,7 +277,7 @@ Automaton_AutoNeed.options = {
 				order = 3,
 				get = function() return self.db.char["卡拉赞_overloaded"] or "需求" end,
 				set = function(v) self.db.char["卡拉赞_overloaded"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 		},
 	},
@@ -198,7 +302,7 @@ Automaton_AutoNeed.options = {
 				order = 2,
 				get = function() return self.db.char["祖尔格拉布_coins"] or "需求" end,
 				set = function(v) self.db.char["祖尔格拉布_coins"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			gems = {
 				name = "宝石需求类型",
@@ -207,7 +311,7 @@ Automaton_AutoNeed.options = {
 				order = 3,
 				get = function() return self.db.char["祖尔格拉布_gems"] or "需求" end,
 				set = function(v) self.db.char["祖尔格拉布_gems"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 		},
 	},
@@ -232,7 +336,7 @@ Automaton_AutoNeed.options = {
 				order = 2,
 				get = function() return self.db.char["安其拉废墟_beetle"] or "需求" end,
 				set = function(v) self.db.char["安其拉废墟_beetle"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			idol = {
 				name = "雕像需求类型",
@@ -241,7 +345,7 @@ Automaton_AutoNeed.options = {
 				order = 3,
 				get = function() return self.db.char["安其拉废墟_idol"] or "需求" end,
 				set = function(v) self.db.char["安其拉废墟_idol"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			-- 新增：虫子坐骑选项
 			mount = {
@@ -251,7 +355,7 @@ Automaton_AutoNeed.options = {
 				order = 4,
 				get = function() return self.db.char["安其拉废墟_mount"] or "需求" end,
 				set = function(v) self.db.char["安其拉废墟_mount"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 		},
 	},
@@ -276,7 +380,7 @@ Automaton_AutoNeed.options = {
 				order = 2,
 				get = function() return self.db.char["熔火之心_lavacore"] or "需求" end,
 				set = function(v) self.db.char["熔火之心_lavacore"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			fierycore = {
 				name = "炽热之核需求类型",
@@ -285,7 +389,7 @@ Automaton_AutoNeed.options = {
 				order = 3,
 				get = function() return self.db.char["熔火之心_fierycore"] or "需求" end,
 				set = function(v) self.db.char["熔火之心_fierycore"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			earthessence = {
 				name = "大地精华需求类型",
@@ -294,7 +398,7 @@ Automaton_AutoNeed.options = {
 				order = 4,
 				get = function() return self.db.char["熔火之心_earthessence"] or "需求" end,
 				set = function(v) self.db.char["熔火之心_earthessence"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			fireessence = {
 				name = "火焰精华需求类型",
@@ -303,7 +407,7 @@ Automaton_AutoNeed.options = {
 				order = 5,
 				get = function() return self.db.char["熔火之心_fireessence"] or "需求" end,
 				set = function(v) self.db.char["熔火之心_fireessence"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			sulfuron = {
 				name = "萨弗隆铁锭需求类型",
@@ -312,7 +416,7 @@ Automaton_AutoNeed.options = {
 				order = 6,
 				get = function() return self.db.char["熔火之心_sulfuron"] or "需求" end,
 				set = function(v) self.db.char["熔火之心_sulfuron"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 		},
 	},
@@ -337,7 +441,7 @@ Automaton_AutoNeed.options = {
 				order = 2,
 				get = function() return self.db.char["纳克萨玛斯_cloth"] or "需求" end,
 				set = function(v) self.db.char["纳克萨玛斯_cloth"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			leather = {
 				name = "皮甲碎片需求类型",
@@ -346,7 +450,7 @@ Automaton_AutoNeed.options = {
 				order = 3,
 				get = function() return self.db.char["纳克萨玛斯_leather"] or "需求" end,
 				set = function(v) self.db.char["纳克萨玛斯_leather"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			mail = {
 				name = "锁甲碎片需求类型",
@@ -355,7 +459,7 @@ Automaton_AutoNeed.options = {
 				order = 4,
 				get = function() return self.db.char["纳克萨玛斯_mail"] or "需求" end,
 				set = function(v) self.db.char["纳克萨玛斯_mail"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			plate = {
 				name = "板甲碎片需求类型",
@@ -364,7 +468,7 @@ Automaton_AutoNeed.options = {
 				order = 5,
 				get = function() return self.db.char["纳克萨玛斯_plate"] or "需求" end,
 				set = function(v) self.db.char["纳克萨玛斯_plate"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 			frozenrune = {
 				name = "冰冻符文需求类型",
@@ -373,54 +477,9 @@ Automaton_AutoNeed.options = {
 				order = 6,
 				get = function() return self.db.char["纳克萨玛斯_frozenrune"] or "需求" end,
 				set = function(v) self.db.char["纳克萨玛斯_frozenrune"] = v end,
-				validate = { "需求", "贪婪", "放弃" },
+				validate = { "需求", "贪婪", "放弃", "不选择" },
 			},
 		},
-	},
-	
-	separator2 = {
-		type = "header",
-		name = "自定义物品管理",
-		order = 100,
-	},
-	
-	custom_item_add = {
-		type = "text",
-		name = "添加自定义物品",
-		desc = "输入物品ID添加到自动需求列表",
-		order = 101,
-		get = false,
-		set = function(v) self:AddItem(v) end,
-		usage = "输入物品ID后按回车",
-	},
-	
-	custom_item_remove = {
-		type = "text",
-		name = "移除自定义物品",
-		desc = "输入物品ID从自动需求列表中移除",
-		order = 102,
-		get = false,
-		set = function(v) self:DelItem(v) end,
-		usage = "输入物品ID后按回车",
-	},
-	
-	custom_item_list = {
-		type = "execute",
-		name = "查看自定义物品列表",
-		desc = "显示所有已添加的自定义物品",
-		order = 103,
-		func = function() self:PrintAll() end,
-	},
-	
-	custom_item_clear = {
-		type = "execute",
-		name = "清除所有自定义物品",
-		desc = "一键清除所有自定义物品设置",
-		order = 104,
-		func = function() 
-			self.db.char.autoneedsDB = {}
-			print("|cffffff00已清除所有自定义物品！|r", "automaton")
-		end,
 	},
 }
 
@@ -524,47 +583,52 @@ local _, enclass = UnitClass("player")
 function Automaton_AutoNeed:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("AutoNeed")
     Automaton:RegisterDefaults("AutoNeed", "profile", {
-        disabled = true,
+        disabled = false, -- 模块默认启用
         rolltype = "贪婪",
-        -- 杂项
-        ["杂项_enable"] = false,
+        -- 杂项（默认启用：全部需求，幻化币/腐化之沙不选择）
+        ["杂项_enable"] = true,
         ["item_4500"] = "需求",
-        ["item_51217"] = "需求",
+        ["item_51217"] = "不选择", -- 幻化币
         ["item_12843"] = "需求",
         ["item_61197"] = "需求",
         ["item_61198"] = "需求",
         ["item_61199"] = "需求",
         ["item_20381"] = "需求",
         ["item_12662"] = "需求",
-        ["item_50203"] = "需求",
+        ["item_50203"] = "不选择", -- 腐化之沙
         ["item_7082"] = "需求",
-        -- 卡拉赞
-        ["卡拉赞_enable"] = false,
+        -- 卡拉赞（默认启用：奥术精华需求，过载魔法能量不选择）
+        ["卡拉赞_enable"] = true,
         ["卡拉赞_arcane"] = "需求",
-        ["卡拉赞_overloaded"] = "需求",
-        -- 祖尔格拉布
-        ["祖尔格拉布_enable"] = false,
+        ["卡拉赞_overloaded"] = "不选择",
+        -- 祖尔格拉布（默认启用：全部需求）
+        ["祖尔格拉布_enable"] = true,
         ["祖尔格拉布_coins"] = "需求",
         ["祖尔格拉布_gems"] = "需求",
-        -- 安其拉废墟/神殿
-        ["安其拉废墟_enable"] = false,
+        -- 安其拉废墟/神殿（默认启用：甲虫/雕像需求，虫子坐骑不选择）
+        ["安其拉废墟_enable"] = true,
         ["安其拉废墟_beetle"] = "需求",
         ["安其拉废墟_idol"] = "需求",
-        ["安其拉废墟_mount"] = "需求",
-        -- 熔火之心
-        ["熔火之心_enable"] = false,
+        ["安其拉废墟_mount"] = "不选择",
+        -- 熔火之心（默认启用：全部需求，萨弗隆铁锭不选择）
+        ["熔火之心_enable"] = true,
         ["熔火之心_lavacore"] = "需求",
         ["熔火之心_fierycore"] = "需求",
         ["熔火之心_earthessence"] = "需求",
         ["熔火之心_fireessence"] = "需求",
-        ["熔火之心_sulfuron"] = "需求",
-        -- 纳克萨玛斯
-        ["纳克萨玛斯_enable"] = false,
+        ["熔火之心_sulfuron"] = "不选择",
+        -- 纳克萨玛斯（默认启用：全部需求）
+        ["纳克萨玛斯_enable"] = true,
         ["纳克萨玛斯_cloth"] = "需求",
         ["纳克萨玛斯_leather"] = "需求",
         ["纳克萨玛斯_mail"] = "需求",
         ["纳克萨玛斯_plate"] = "需求",
         ["纳克萨玛斯_frozenrune"] = "需求",
+        -- 按品质自动需求（蓝/绿/紫，统一模组开关，默认关闭）
+        ["品质_enable"] = false,
+        ["蓝装_rolltype"] = "贪婪",
+        ["绿装_rolltype"] = "贪婪",
+        ["紫装_rolltype"] = "贪婪",
     })
     Automaton:SetDisabledAsDefault(self, "AutoNeed")
     self:RegisterOptions(self.options)
@@ -585,6 +649,30 @@ function Automaton_AutoNeed:OnInitialize()
         end
     end
     -- ====================================================
+
+    -- 兼容旧版：原 蓝装_enable / 绿装_enable 任一开启则迁移到统一模组开关
+    if self.db.char["蓝装_enable"] or self.db.char["绿装_enable"] then
+        self.db.char["品质_enable"] = true
+    end
+
+    -- 子项目默认值迁移 v1（2026-09-08）：
+    -- 六个分类默认启用；幻化币/腐化之沙/过载魔法能量/虫子坐骑/萨弗隆铁锭 默认"不选择"，其余默认"需求"。
+    -- 上方 profile→char 合并只填充空键，老角色 char 里已存的旧默认（各分类 enable=false 等）
+    -- 不会被新默认覆盖，因此按版本号一次性强制写入新默认；迁移后用户手动调整不再受影响。
+    if (self.db.char.autoNeedDefaultsVersion or 0) < 1 then
+        self.db.char["杂项_enable"] = true
+        self.db.char["卡拉赞_enable"] = true
+        self.db.char["祖尔格拉布_enable"] = true
+        self.db.char["安其拉废墟_enable"] = true
+        self.db.char["熔火之心_enable"] = true
+        self.db.char["纳克萨玛斯_enable"] = true
+        self.db.char["item_51217"] = "不选择"            -- 幻化币
+        self.db.char["item_50203"] = "不选择"            -- 腐化之沙
+        self.db.char["卡拉赞_overloaded"] = "不选择"      -- 过载魔法能量
+        self.db.char["安其拉废墟_mount"] = "不选择"       -- 虫子坐骑
+        self.db.char["熔火之心_sulfuron"] = "不选择"      -- 萨弗隆铁锭
+        self.db.char.autoNeedDefaultsVersion = 1
+    end
 end
 
 function Automaton_AutoNeed:OnEnable()
@@ -663,7 +751,9 @@ function Automaton_AutoNeed:CheckItem(itemid)
     local autoneedsDB = self.db.char.autoneedsDB or {}
     for i, v in ipairs(autoneedsDB) do
         if v.itemID == itemid then
-            return v.rolltype or needvaule[self.db.char.rolltype] or 2 -- 默认为贪婪
+            local rt = v.rolltype or needvaule[self.db.char.rolltype] or 2 -- 默认为贪婪
+            if rt == -1 then return nil end -- 不选择：不自动掷骰，保留弹窗手动操作
+            return rt
         end
     end
     
@@ -707,10 +797,12 @@ function Automaton_AutoNeed:CheckItem(itemid)
                     
                     local setting = self.db.char[settingKey]
                     if setting then
+                         if setting == "不选择" then return nil end -- 不选择：不自动掷骰，保留弹窗手动操作
                          return needvaule[setting] or 1
                     else
                            -- 未单独设置时，使用全局默认 rolltype
                          local global = self.db.char.rolltype
+                        if global == "不选择" then return nil end
                         return needvaule[global] or 2  -- 默认贪婪（2）
                    end
                 end
@@ -718,6 +810,30 @@ function Automaton_AutoNeed:CheckItem(itemid)
         end
     end
     
+	-- ========== 按品质自动需求：蓝/绿/紫通用装备（统一模组开关） ==========
+	-- 仅在未命中任何具体分类时生效，避免覆盖特定副本分类
+	if self.db.char["品质_enable"] then
+		local quality, equipLoc = GetItemQualityAndEquipLoc(itemid)
+		if equipLoc and equipLoc ~= "" then
+			local s
+			if quality == 4 then
+				s = self.db.char["紫装_rolltype"]
+			elseif quality == 3 then
+				s = self.db.char["蓝装_rolltype"]
+			elseif quality == 2 then
+				s = self.db.char["绿装_rolltype"]
+			end
+			if s then
+				if s == "不选择" then
+					-- 不做任何选择：不自动掷骰，保留弹窗给玩家手动操作
+					return nil
+				end
+				return needvaule[s] or 2
+			end
+		end
+	end
+	-- =====================================================
+
     return nil -- 没有匹配项
 end
 
@@ -729,21 +845,21 @@ function Automaton_AutoNeed:START_LOOT_ROLL(id)
         if itemID then
             itemID = tonumber(itemID)
             local rolltype = self:CheckItem(itemID)
-            if rolltype then
+            -- 仅 0=放弃 / 1=需求 / 2=贪婪 为有效掷骰值；-1（不选择）/nil 均不自动操作，保留弹窗手动选择
+            if rolltype == 0 or rolltype == 1 or rolltype == 2 then
                 RollOnLoot(id, rolltype)
-                
                 if rolltype == 1 or rolltype == 2 then
-                        C_Timer.After(0.01, function()
-                         -- 确保当前弹窗是掷骰确认框
+                    C_Timer.After(0.01, function()
+                        -- 确保当前弹窗是掷骰确认框
                         if StaticPopup1 and StaticPopup1:IsVisible() and StaticPopup1.which == "CONFIRM_LOOT_ROLL" then
-                        StaticPopup1Button1:Click()
-                      end
-                  end)
-               end
+                            StaticPopup1Button1:Click()
+                        end
+                    end)
+                end
             end
         end
     end)
-    
+
     -- 可选：记录错误但不显示给用户
     if not success then
         -- 可以在这里记录错误日志，但不在UI中显示

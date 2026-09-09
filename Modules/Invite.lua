@@ -58,7 +58,7 @@ L:RegisterTranslations("enUS", function()
 		["Print debug information about blacklist"] = "打印黑名单的调试信息",
 
 		["Can't invite"] = "不能邀请",
-		[",you are not leader"] = "，你不是队长",
+		[",you are not leader"] = "，你不是队长或团队助理",
 		["Automatically converted to Raid"] = "|cffff0000>>|r已自动转换到团队|cffff0000<<|r",
 		[",Raid is full."] = "，团队已满",
 		[",Party is full."] = "，小队已满",
@@ -240,7 +240,7 @@ Automaton_Invite.options = {
 function Automaton_Invite:OnInitialize()
 	self.db = Automaton:AcquireDBNamespace("Invite")
 	Automaton:RegisterDefaults("Invite", "profile", {
-		disabled = false,
+		disabled = true,
 		inviteString = "invite",
 		ignoreCase = true,
 		friends = true,
@@ -470,6 +470,30 @@ function Automaton_Invite:ConvertToRaidIfNeeded()
 	return false
 end
 
+-- 判断玩家是否拥有邀请权限（队长或团队助理）
+-- 单人时拥有权限；小队中只有队长；团队中团长(rank=2)或助理(rank=1)拥有权限
+function Automaton_Invite:HasInviteAuthority()
+	-- 如果独自一人，拥有权限
+	if GetNumPartyMembers() == 0 and GetNumRaidMembers() == 0 then
+		return true
+	end
+	
+	-- 在团队中：团长(rank=2)或助理(rank=1)拥有权限
+	if GetNumRaidMembers() > 0 then
+		local name = UnitName("player")
+		for i = 1, GetNumRaidMembers() do
+			local raidName, rank = GetRaidRosterInfo(i)
+			if raidName == name then
+				return (rank == 1 or rank == 2)
+			end
+		end
+		return false
+	end
+	
+	-- 在小队中：队长拥有权限
+	return UnitIsPartyLeader("player")
+end
+
 function Automaton_Invite:CanInviteMorePlayers()
 	-- 获取当前队伍状态
 	local numPartyMembers = GetNumPartyMembers()
@@ -480,8 +504,8 @@ function Automaton_Invite:CanInviteMorePlayers()
 		return true, "可以邀请"
 	end
 	
-	-- 检查是否是队长
-	if not UnitIsPartyLeader("player") then
+	-- 检查是否有邀请权限（队长或团队助理）
+	if not self:HasInviteAuthority() then
 		return false, L[",you are not leader"]
 	end
 	

@@ -120,7 +120,7 @@ end
 function Automaton_ItemLinkEnUS:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("ItemLinkEnUS")
     Automaton:RegisterDefaults("ItemLinkEnUS", "profile", {
-        disabled = false
+        disabled = false, -- 模块默认启用（物品链接英文转换）
     })
     Automaton:SetDisabledAsDefault(self, "ItemLinkEnUS")
     self:RegisterOptions(self.options)

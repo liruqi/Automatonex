@@ -43,6 +43,7 @@ L:RegisterTranslations("enUS", function()
         ["Revenge"] = "复仇",
         ["Arcane Surge"] = "奥术涌动",
         ["Lacerate"] = "割伤",
+        ["Kill Command"] = "杀戮命令",
         ["Baited Shot"] = "诱饵射击",
         ["Hammer of Wrath"] = "愤怒之锤",
         ["Judgement"] = "审判",
@@ -110,11 +111,18 @@ local ACTION_PROCS = {
     },
     ["HUNTER"] = {
         {
-            buffName         = L["Lacerate"], 
+            buffName         = L["Lacerate"],
             texture         = "Interface\\Icons\\Spell_Lacerate_1c",
             alertStyle      = "SIDES2",
             spellName       = "Lacerate",
             duration        = 4
+        },
+        {
+            buffName         = L["Kill Command"],
+            texture         = "Interface\\Icons\\Ability_Hunter_KillCommand",
+            alertStyle      = "TOP",
+            spellName       = "Kill Command",
+            duration        = 5
         },
         {
             buffName         = L["Baited Shot"],
@@ -137,7 +145,7 @@ local ACTION_PROCS = {
             texture          = "Interface\\Icons\\Spell_Holy_RighteousFury",
             alertStyle       = "RIGHT",
             spellName        = "Judgement",
-            duration         = 5
+            duration         = 30
         },
         {
             buffName         = L["Hammer of Justice"],
@@ -162,9 +170,10 @@ local timerFrame
 function Automaton_ProcDoc:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("ProcDoc")
     Automaton:RegisterDefaults("ProcDoc", "profile", {
-        disabled = false,
+        disabled = true,
         sound = false,
         disableTimers = false,
+        alertPositions = {},  -- 各警报样式(样式名)的拖动位置
     })
     Automaton:SetDisabledAsDefault(self, "ProcDoc")
     -- 新增：注册配置选项到主界面
@@ -235,9 +244,19 @@ end
 
 function Automaton_ProcDoc:CreateAlertSystem()
     -- 创建计时器更新帧
+    -- 除每帧刷新倒计时外，每 0.25 秒轮询一次技能可用性，
+    -- 保证「触发后且可用期间持续提醒」不依赖事件触发频率
+    -- （1.12 的 OnUpdate 回调不传 self，elapsed 用 arg1 取）
     timerFrame = CreateFrame("Frame")
-    timerFrame:SetScript("OnUpdate", function(self, elapsed)
+    local lastCheck = 0
+    timerFrame:SetScript("OnUpdate", function()
         Automaton_ProcDoc:UpdateAllTimers()
+        lastCheck = lastCheck + (arg1 or 0)
+        if lastCheck >= 0.25 then
+            lastCheck = 0
+            Automaton_ProcDoc:CheckAllActionProcs()
+            Automaton_ProcDoc:UpdateSpellbookActionProcs()
+        end
     end)
 end
 
@@ -255,24 +274,65 @@ end
 local function CreateAlertFrame(style)
     local alertObj = {}
     alertObj.isActive      = false
-    alertObj.isActionBased = false    
+    alertObj.isActionBased = false
     alertObj.style         = style
     alertObj.textures      = {}
     alertObj.timers        = {}
-    
+
     alertObj.baseWidth  = 40
     alertObj.baseHeight = 40
 
-    local tex = UIParent:CreateTexture(nil, "OVERLAY")
-    tex:SetPoint("CENTER", UIParent, "CENTER", 211, 0)
+    -- 可拖动锚点框：图标/倒计时挂在它上面，左键拖动移动位置
+    -- 仅在警报激活时 Show，避免平时拦住鼠标点击
+    local anchor = CreateFrame("Frame", nil, UIParent)
+    anchor:SetWidth(alertObj.baseWidth)
+    anchor:SetHeight(alertObj.baseHeight)
+    anchor:SetMovable(true)
+    anchor:EnableMouse(true)
+    anchor:RegisterForDrag("LeftButton")
+    anchor:SetFrameStrata("HIGH")
+    anchor:Hide()
+    alertObj.anchor = anchor
+
+    -- 恢复该样式的已保存位置
+    local positions = Automaton_ProcDoc.db.profile.alertPositions
+    if positions and positions[style] then
+        local pos = positions[style]
+        anchor:ClearAllPoints()
+        anchor:SetPoint(pos.point, UIParent, pos.relativePoint, pos.xOfs, pos.yOfs)
+    else
+        anchor:SetPoint("CENTER", UIParent, "CENTER", 211, 0)
+    end
+
+    anchor:SetScript("OnDragStart", function()
+        anchor:StartMoving()
+    end)
+    anchor:SetScript("OnDragStop", function()
+        anchor:StopMovingOrSizing()
+        local point, _, relativePoint, xOfs, yOfs = anchor:GetPoint()
+        local saved = Automaton_ProcDoc.db.profile.alertPositions
+        if not saved then
+            saved = {}
+            Automaton_ProcDoc.db.profile.alertPositions = saved
+        end
+        saved[style] = {
+            point = point,
+            relativePoint = relativePoint,
+            xOfs = xOfs,
+            yOfs = yOfs
+        }
+    end)
+
+    local tex = anchor:CreateTexture(nil, "OVERLAY")
+    tex:SetPoint("CENTER", anchor, "CENTER", 0, 0)
     tex:SetWidth(alertObj.baseWidth)
     tex:SetHeight(alertObj.baseHeight)
     tex:SetAlpha(0.8)
     tex:Hide()
     table.insert(alertObj.textures, tex)
-    
+
     -- 创建计时器文本
-    local timerText = UIParent:CreateFontString(nil, "OVERLAY")
+    local timerText = anchor:CreateFontString(nil, "OVERLAY")
     timerText:SetPoint("CENTER", tex, "CENTER", 0, 0)
     timerText:SetFont("Fonts\\FRIZQT__.TTF", 12, "OUTLINE")
     timerText:SetTextColor(1, 1, 1, 1)
@@ -340,6 +400,7 @@ function Automaton_ProcDoc:ShowActionProcAlert(actionProc)
 
     alertObj = AcquireAlertFrame(actionProc.alertStyle or "SIDES", true)
     alertObj.isActive   = true
+    alertObj.anchor:Show()  -- 激活期间可拖动
 
     local path = actionProc.texture
     for _, tex in ipairs(alertObj.textures) do
@@ -371,6 +432,9 @@ function Automaton_ProcDoc:HideActionProcAlert(actionProc)
     local alertObj = state.alertObj
     if alertObj and alertObj.isActive then
         alertObj.isActive = false
+        if alertObj.anchor then
+            alertObj.anchor:Hide()
+        end
         for _, tex in ipairs(alertObj.textures) do tex:Hide() end
         for _, timer in ipairs(alertObj.timers) do timer:Hide() end
     end
@@ -382,6 +446,9 @@ function Automaton_ProcDoc:HideAllAlerts()
     for _, alertObj in ipairs(alertFrames) do
         if alertObj.isActive then
             alertObj.isActive = false
+            if alertObj.anchor then
+                alertObj.anchor:Hide()
+            end
             for _, tex in ipairs(alertObj.textures) do tex:Hide() end
             for _, timer in ipairs(alertObj.timers) do timer:Hide() end
         end
@@ -390,28 +457,16 @@ function Automaton_ProcDoc:HideAllAlerts()
 end
 
 -- 计时器更新
+-- 注意：不再按 duration 到点自动隐藏警报。
+-- 警报的隐藏只由「技能不可用 / 进CD / 施放成功」驱动（FindActionSlotAndCheck、
+-- UpdateSpellbookActionProcs、UNIT_SPELLCAST_SUCCEEDED），这样只要技能
+-- 处于触发后且可用状态，图标会一直显示（倒计时归 0 后仅隐藏数字）。
 function Automaton_ProcDoc:UpdateAllTimers()
     for spellName, state in pairs(actionProcStates) do
         if state.isActive and state.startTime and state.alertObj and state.alertObj.isActive then
             local elapsed = GetTime() - state.startTime
             local remaining = state.duration - elapsed
-            
-            if remaining > 0 then
-                self:UpdateTimerDisplay(state.alertObj, remaining)
-            else
-                local actionProc
-                local _, playerClass = UnitClass("player")
-                local actionProcs = ACTION_PROCS[playerClass] or {}
-                for _, proc in ipairs(actionProcs) do
-                    if proc.spellName == spellName then
-                        actionProc = proc
-                        break
-                    end
-                end
-                if actionProc then
-                    self:HideActionProcAlert(actionProc)
-                end
-            end
+            self:UpdateTimerDisplay(state.alertObj, remaining)
         end
     end
 end
@@ -465,7 +520,13 @@ local function FindActionSlotAndCheck(actionProc)
     end
 
     local usable = IsUsableAction(foundSlot)
-    if usable then
+
+    -- 1.12 的 IsUsableAction 不检查技能冷却，需用 GetActionCooldown 单独判断
+    -- 否则"审判"等技能触发后即使 CD 中仍会误报
+    local cdStart, cdDuration = GetActionCooldown(foundSlot)
+    local offCooldown = (cdDuration == nil) or (cdDuration == 0)
+
+    if usable and offCooldown then
         if not state.isActive then
             Automaton_ProcDoc:ShowActionProcAlert(actionProc)
         end

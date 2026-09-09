@@ -18,7 +18,7 @@ local NEW_LEVEL_NUM_STR = "等级 %d"
 function Automaton_NewLevelFrame:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("NewLevelFrame")
     Automaton:RegisterDefaults("NewLevelFrame", "profile", {
-        disabled = false,
+        disabled = false, -- 模块默认启用（升级窗口提示）
     })
     Automaton:SetDisabledAsDefault(self, "NewLevelFrame")
 

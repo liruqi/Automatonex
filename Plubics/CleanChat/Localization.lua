@@ -143,15 +143,27 @@ CLEANCAHT_CHAT_MSG_SYSTEM = {
   '|cfff86256[HC]|r 硬核玩家 |cff068fff%1|r 在硬核模式下已达到%2级。然而死亡也如影随形，伴其左右...',
   ['(.+) 在硬核模式中已达到 (%d+) 级！他们的荣光将伴随他们走向不朽！.*'] =
   '|cfff86256[HC]|r 硬核玩家 |cff068fff%1|r 在硬核模式下已达到%2级。然而死亡也如影随形，伴其左右...',
-  ['服务器运行时间： (%d+) Days (%d+) Hours (%d+) Minutes (%d+) Seconds%.'] = 
+  ['服务器运行时间： (%d+) Days (%d+) Hours (%d+) Minutes (%d+) Seconds%.?'] = 
   '服务器运行时间：%1天%2小时%3分钟%4秒',
-  ['服务器运行时间： (%d+) Day (%d+) Hours (%d+) Minutes (%d+) Seconds%.'] = 
+  ['服务器运行时间： (%d+) Day (%d+) Hours (%d+) Minutes (%d+) Seconds%.?'] = 
   '服务器运行时间：%1天%2小时%3分钟%4秒',
-  ['服务器运行时间： (%d+) Hours (%d+) Minutes (%d+) Seconds%.'] = 
+  ['服务器运行时间： (%d+) Hours (%d+) Minutes (%d+) Seconds%.?'] = 
   '服务器运行时间：%1小时%2分钟%3秒',
-  ['服务器运行时间： (%d+) Minutes (%d+) Seconds%.'] = 
+  ['服务器运行时间： (%d+) Minutes (%d+) Seconds%.?'] =
   '服务器运行时间：%1分钟%2秒',
-  ['Server Uptime: (%d+) Days (%d+) Hours (%d+) Minutes (%d+) Seconds%.'] = 
+  -- 单数 Hour 变体（1 小时时 Turtle 用 Hour 而非 Hours）
+  ['服务器运行时间： (%d+) Hour (%d+) Minutes (%d+) Seconds%.?'] =
+  '服务器运行时间：%1小时%2分钟%3秒',
+  ['服务器运行时间： (%d+) Day (%d+) Hour (%d+) Minutes (%d+) Seconds%.?'] =
+  '服务器运行时间：%1天%2小时%3分钟%4秒',
+  ['服务器运行时间： (%d+) Days (%d+) Hour (%d+) Minutes (%d+) Seconds%.?'] =
+  '服务器运行时间：%1天%2小时%3分钟%4秒',
+  -- Day 单数/复数 但小时为 0 被省略 的变体（如 "1 Day 16 Minutes 34 Seconds"）
+  ['服务器运行时间： (%d+) Day (%d+) Minutes (%d+) Seconds%.?'] =
+  '服务器运行时间：%1天%2分钟%3秒',
+  ['服务器运行时间： (%d+) Days (%d+) Minutes (%d+) Seconds%.?'] =
+  '服务器运行时间：%1天%2分钟%3秒',
+  ['Server Uptime: (%d+) Days (%d+) Hours (%d+) Minutes (%d+) Seconds%.?'] =
   '服务器运行时间：%1天%2小时%3分钟%4秒',
   ['A tragedy has occurred. Hardcore character (.+) has fallen in PvP to (.+) at level (.+). May this sacrifice not be forgotten.']                   =
   '|cfff86256[PVP&HC]|r %3级的 |cff068fff%1|r 被玩家 %2 击杀！成功送去投胎！',
@@ -162,6 +174,14 @@ CLEANCAHT_CHAT_MSG_SYSTEM = {
   ['Server Time: Fri, (.+)'] = '服务器时间：周五, %1',
   ['Server Time: Sat, (.+)'] = '服务器时间：周六, %1',
   ['Server Time: Sun, (.+)'] = '服务器时间：周日, %1',
+  -- 中文客户端前缀（服务器时间：）+ 英文周几缩写 变体
+  ['服务器时间：Mon, (.+)'] = '服务器时间：周一, %1',
+  ['服务器时间：Tue, (.+)'] = '服务器时间：周二, %1',
+  ['服务器时间：Wed, (.+)'] = '服务器时间：周三, %1',
+  ['服务器时间：Thu, (.+)'] = '服务器时间：周四, %1',
+  ['服务器时间：Fri, (.+)'] = '服务器时间：周五, %1',
+  ['服务器时间：Sat, (.+)'] = '服务器时间：周六, %1',
+  ['服务器时间：Sun, (.+)'] = '服务器时间：周日, %1',
   ['Darkmoon Faire standing is now Neutral.']                                                                                                         = '暗月马戏团活动已开放！',
   ["(.+) was added to your collection."]                                                                                                              = "%1 |CFFFF00FF已添加到收藏|R",
   -- ['Players online: (%d+). Max online: (%d+).']                                                                                                       = '当前在线：%1。最多在线：%2。',

@@ -62,8 +62,8 @@ Automaton_Plates.options = {
 function Automaton_Plates:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("Plates")
 	Automaton:RegisterDefaults("Plates", "profile", {
-		disabled = false,
-		hidePlayerNameInCity = true,
+		disabled = true,
+		hidePlayerNameInCity = false,
 		showNameplatesInCombat = false,
 		playerNameSettingInWild = "1", -- 野外玩家名字显示设置
 		playerNameSettingInCity = "0", -- 主城玩家名字显示设置

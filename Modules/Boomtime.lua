@@ -80,6 +80,7 @@ end
 
 function Automaton_Boomtime:OnDisable()
     self:UnregisterAllEvents()
+    self._stopping = true
     self.frame:Hide()
     self:StopUpdateTimer()
 end
@@ -89,80 +90,109 @@ end
 ------------------------------
 
 function Automaton_Boomtime:InitializeFrame()
-    -- 创建主框架
+    -- 创建主框架（新款扁平风格，跟随主题色，与主界面/CDSafe 状态面板一致）
     self.frame = CreateFrame("Frame", "Automaton_BoomtimeFrame", UIParent)
-    self.frame:SetWidth(130)
-    self.frame:SetHeight(170)
-    self.frame:SetBackdrop({
-        bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
-        edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
-        tile = true, tileSize = 16, edgeSize = 16,
-        insets = {left = 4, right = 4, top = 4, bottom = 4}
-    })
-    self.frame:SetBackdropColor(0, 0, 0, 0.8)
+    self.frame:SetWidth(150)
+    self.frame:SetHeight(196)
+    Automaton.ApplyFlatBackdrop(self.frame, Automaton.FLAT.window, Automaton.FLAT.border)
+    Automaton.AddFlatBorder(self.frame, Automaton.FLAT.border)
     self.frame:SetFrameStrata("DIALOG")
     self.frame:SetToplevel(true)
-    
+
     -- 位置设置
     self:RefreshFramePosition()
-    
-    -- 拖动功能 - 始终可用
-    self.frame:SetScript("OnDragStart", function() 
-        this:StartMoving() 
+
+    -- 标题栏
+    local title = self.frame:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    title:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 10, -9)
+    title:SetFont(STANDARD_TEXT_FONT, 11)
+    title:SetTextColor(Automaton.FLAT.title[1], Automaton.FLAT.title[2], Automaton.FLAT.title[3])
+    title:SetText(L.modulename)
+
+    -- 标题分隔线
+    local divider = self.frame:CreateTexture(nil, "BACKGROUND")
+    divider:SetTexture(Automaton.FLAT_BG)
+    divider:SetHeight(1)
+    divider:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 8, -26)
+    divider:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -8, -26)
+    divider:SetVertexColor(Automaton.FLAT.border[1], Automaton.FLAT.border[2], Automaton.FLAT.border[3], 0.9)
+
+    -- 关闭按钮（右上角，关闭即停用模块）
+    local closeBtn = CreateFrame("Button", nil, self.frame)
+    closeBtn:SetWidth(16)
+    closeBtn:SetHeight(16)
+    closeBtn:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -7, -7)
+    Automaton.ApplyFlatBackdrop(closeBtn, { 0.35, 0.08, 0.08, 0.98 }, Automaton.FLAT.border)
+    Automaton.AddFlatBorder(closeBtn, Automaton.FLAT.border)
+    local closeText = closeBtn:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    closeText:SetPoint("CENTER", closeBtn, "CENTER", 0, 0)
+    closeText:SetFont(STANDARD_TEXT_FONT, 11, "OUTLINE")
+    closeText:SetTextColor(Automaton.FLAT.text[1], Automaton.FLAT.text[2], Automaton.FLAT.text[3])
+    closeText:SetText("×")
+    closeBtn:SetScript("OnEnter", function() closeBtn:SetBackdropColor(0.65, 0.12, 0.12, 1) end)
+    closeBtn:SetScript("OnLeave", function() closeBtn:SetBackdropColor(0.35, 0.08, 0.08, 0.98) end)
+    closeBtn:SetScript("OnClick", function()
+        -- 走标准启停路径：按角色持久化 + 触发 OnDisable 隐藏窗口
+        Automaton:ToggleModuleActive("Boomtime", false)
     end)
-    
+
+    -- 创建标签和倒计时文本
+    self.labelTexts = {}
+    self.timeTexts = {}
+    local contentStartY = -38
+    for i = 1, 5 do
+        local label = self.frame:CreateFontString(nil, "OVERLAY")
+        label:SetFont(STANDARD_TEXT_FONT, 10)
+        label:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 10, contentStartY - 22 * (i-1))
+        label:SetTextColor(Automaton.FLAT.dim[1], Automaton.FLAT.dim[2], Automaton.FLAT.dim[3])
+        label:SetText(string.format(L.LABEL, i))
+        self.labelTexts[i] = label
+
+        local timeText = self.frame:CreateFontString(nil, "OVERLAY")
+        timeText:SetFont(STANDARD_TEXT_FONT, 10)
+        timeText:SetPoint("TOPRIGHT", self.frame, "TOPRIGHT", -10, contentStartY - 22 * (i-1))
+        timeText:SetTextColor(Automaton.FLAT.text[1], Automaton.FLAT.text[2], Automaton.FLAT.text[3])
+        timeText:SetText(L.READY)
+        self.timeTexts[i] = timeText
+    end
+
+    -- 通报按钮（扁平按钮，hover/press 跟随主题）
+    self.reportBtn = Automaton.CreateFlatButton(self.frame, 58, 20, L.REPORT_BUTTON)
+    self.reportBtn:SetPoint("BOTTOMLEFT", self.frame, "BOTTOMLEFT", 10, 10)
+    self.reportBtn:SetScript("OnClick", function() self:ReportStatus() end)
+
+    -- 重置按钮（真正发 ResetInstances 命令）
+    self.resetBtn = Automaton.CreateFlatButton(self.frame, 58, 20, L.RESET_BUTTON)
+    self.resetBtn:SetPoint("BOTTOMRIGHT", self.frame, "BOTTOMRIGHT", -10, 10)
+    self.resetBtn:SetScript("OnClick", function() ResetInstances() end)
+
+    -- 拖动功能 - 始终可用
+    self.frame:EnableMouse(true)
+    self.frame:SetMovable(true)
+    self.frame:RegisterForDrag("LeftButton")
+    self.frame:SetScript("OnDragStart", function()
+        this:StartMoving()
+    end)
+
     self.frame:SetScript("OnDragStop", function()
         this:StopMovingOrSizing()
         self.db.profile.left = this:GetLeft()
         self.db.profile.top = this:GetTop()
-        self.db.profile.height = this:GetHeight()
     end)
-    
-    -- 创建标签和倒计时文本
-    self.labelTexts = {}
-    self.timeTexts = {}
-    local contentStartY = -15
-    for i = 1, 5 do
-        local label = self.frame:CreateFontString(nil, "OVERLAY")
-        label:SetFontObject(GameFontNormal)
-        label:SetPoint("TOPLEFT", self.frame, "TOPLEFT", 10, contentStartY - 25 * (i-1))
-        label:SetText(string.format(L.LABEL, i))
-        self.labelTexts[i] = label
-        
-        local timeText = self.frame:CreateFontString(nil, "OVERLAY")
-        timeText:SetFontObject(GameFontHighlight)
-        timeText:SetPoint("LEFT", label, "RIGHT", 10, 0)
-        timeText:SetText(L.READY)
-        self.timeTexts[i] = timeText
-    end
-    
-    -- 创建按钮容器
-    local buttonContainer = CreateFrame("Frame", nil, self.frame)
-    buttonContainer:SetWidth(160)
-    buttonContainer:SetHeight(30)
-    buttonContainer:SetPoint("BOTTOM", self.frame, "BOTTOM", 20, 10)
-    
-    -- 通报按钮
-    self.reportBtn = CreateFrame("Button", nil, buttonContainer, "OptionsButtonTemplate")
-    self.reportBtn:SetWidth(60)
-    self.reportBtn:SetHeight(25)
-    self.reportBtn:SetPoint("LEFT", buttonContainer, "LEFT", 0, 0)
-    self.reportBtn:SetText(L.REPORT_BUTTON)
-    self.reportBtn:SetScript("OnClick", function() self:ReportStatus() end)
-    
-    -- 重置按钮
-    self.resetBtn = CreateFrame("Button", nil, buttonContainer, "OptionsButtonTemplate")
-    self.resetBtn:SetWidth(60)
-    self.resetBtn:SetHeight(25)
-    self.resetBtn:SetPoint("LEFT", self.reportBtn, "RIGHT", 0, 0)
-    self.resetBtn:SetText(L.RESET_BUTTON)
-    self.resetBtn:SetScript("OnClick", function() ResetInstances() end)
-    
-    -- 初始状态 - 始终可拖动
-    self.frame:EnableMouse(true)
-    self.frame:SetMovable(true)
-    self.frame:RegisterForDrag("LeftButton")
-    
+
+    -- ESC 关闭（frame 已命名，注册进 UISpecialFrames）；任何隐藏路径都同步停用模块，
+    -- 避免窗口被藏起来模块还在跑。_stopping 守卫防止 OnDisable→Hide→OnHide 递归。
+    table.insert(UISpecialFrames, "Automaton_BoomtimeFrame")
+    self.frame:SetScript("OnHide", function()
+        if self._stopping then
+            self._stopping = nil
+            return
+        end
+        if Automaton:IsModuleActive("Boomtime") then
+            Automaton:ToggleModuleActive("Boomtime", false)
+        end
+    end)
+
     -- 默认隐藏框架
     self.frame:Hide()
 end
@@ -213,11 +243,14 @@ function Automaton_Boomtime:UpdateAllTimers()
                 local mins = math.floor(remain / 60)
                 local secs = math.mod(remain, 60)
                 self.timeTexts[i]:SetText(string.format(L.TIME_FORMAT, mins, secs))
+                self.timeTexts[i]:SetTextColor(Automaton.FLAT.text[1], Automaton.FLAT.text[2], Automaton.FLAT.text[3])
             else
                 self.timeTexts[i]:SetText(L.READY)
+                self.timeTexts[i]:SetTextColor(Automaton.FLAT.accent[1], Automaton.FLAT.accent[2], Automaton.FLAT.accent[3])
             end
         else
             self.timeTexts[i]:SetText(L.READY)
+            self.timeTexts[i]:SetTextColor(Automaton.FLAT.accent[1], Automaton.FLAT.accent[2], Automaton.FLAT.accent[3])
         end
     end
 end

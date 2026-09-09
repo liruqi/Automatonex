@@ -29,6 +29,7 @@ Automaton_ShiQu.options = {
         type = "toggle",
         name = L["Permission Check"],
         desc = L["Toggle permission check for loot handling"],
+        order = 2,
         get = function() return Automaton_ShiQu.db.profile.permissionCheck end,
         set = function(v) Automaton_ShiQu.db.profile.permissionCheck = v end,
     },
@@ -36,6 +37,7 @@ Automaton_ShiQu.options = {
         type = "toggle",
         name = L["Enable Announce"],
         desc = L["Toggle whether to announce loot items in raid"],
+        order = 3,
         get = function() return Automaton_ShiQu.db.profile.announceEnabled end,
         set = function(v) Automaton_ShiQu.db.profile.announceEnabled = v end,
     }

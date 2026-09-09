@@ -28,23 +28,35 @@ local Automaton_follow = Automaton:NewModule("follow")
 Automaton_follow.modulename = L["follow"]
 Automaton_follow.moduledesc = L["Options for sending out party follows."]
 Automaton_follow.options = {
-	keyword = {
-		type = "text", name = L["follow text"], desc = L["The text users send to trigger an follow."],
-		order = 3, usage = L["keyword follow"],
-		get = function() return Automaton_follow.db.profile.followString end,
-		set = function(v) Automaton_follow.db.profile.followString = v end,
+	["触发设置"] = {
+		type = "group", name = "触发设置", desc = "自动跟随的触发条件",
+		order = 1,
+		args = {
+			keyword = {
+				type = "text", name = L["follow text"], desc = L["The text users send to trigger an follow."],
+				order = 1, usage = L["keyword follow"],
+				get = function() return Automaton_follow.db.profile.followString end,
+				set = function(v) Automaton_follow.db.profile.followString = v end,
+			},
+			case = {
+				type = "toggle", name = L["Ignore case"], desc = L["Disable case sensitivity for the follow text"],
+				order = 2,
+				get = function() return Automaton_follow.db.profile.ignoreCase end,
+				set = function(v) Automaton_follow.db.profile.ignoreCase = v end,
+			},
+		},
 	},
-	case = {
-		type = "toggle", name = L["Ignore case"], desc = L["Disable case sensitivity for the follow text"],
+	["回复设置"] = {
+		type = "group", name = "回复设置", desc = "收到跟随指令后的回复",
 		order = 2,
-		get = function() return Automaton_follow.db.profile.ignoreCase end,
-		set = function(v) Automaton_follow.db.profile.ignoreCase = v end,
-	},
-	Reply = {
-		type = "toggle", name = "收到跟随指令后密语回复", desc = "收到跟随指令后是否密语回复",
-		order = 4,
-		get = function() return Automaton_follow.db.profile.reply end,
-		set = function(v) Automaton_follow.db.profile.reply = v end,
+		args = {
+			Reply = {
+				type = "toggle", name = "收到跟随指令后密语回复", desc = "收到跟随指令后是否密语回复",
+				order = 1,
+				get = function() return Automaton_follow.db.profile.reply end,
+				set = function(v) Automaton_follow.db.profile.reply = v end,
+			},
+		},
 	},
 }
 

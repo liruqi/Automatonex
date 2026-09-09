@@ -45,11 +45,13 @@ Automaton_Summon.moduledesc = L["Options for accepting summons."]
 Automaton_Summon.options = {
 	delay = {
 		type = "toggle", name = L["Delay"], desc = L["With this option enabled, automatic summons are delayed."],
+		order = 2,
 		get = function() return Automaton_Summon.db.profile.delay end,
 		set = function(v) Automaton_Summon.db.profile.delay = v end,
 	},
 	delayTime = {
 		type = "range", name = L["Delay Time"], desc = L["Set the time in seconds to delay automatic summon acceptance."],
+		order = 3,
 		get = function() return Automaton_Summon.db.profile.delayTime end,
 		set = function(v) Automaton_Summon.db.profile.delayTime = v end,
 		min = 5,
@@ -59,11 +61,13 @@ Automaton_Summon.options = {
 	},
 	combatDelay = {
 		type = "toggle", name = L["Combat Delay"], desc = L["If summoned while in combat, accept the summon after combat ends."],
+		order = 4,
 		get = function() return Automaton_Summon.db.profile.combatDelay end,
 		set = function(v) Automaton_Summon.db.profile.combatDelay = v end,
 	},
 	combatDelayTime = {
 		type = "range", name = L["Combat Delay Time"], desc = L["Set the time in seconds to delay automatic summon acceptance after combat ends."],
+		order = 5,
 		get = function() return Automaton_Summon.db.profile.combatDelayTime end,
 		set = function(v) Automaton_Summon.db.profile.combatDelayTime = v end,
 		min = 5,
@@ -73,6 +77,7 @@ Automaton_Summon.options = {
 	},
 	quiet = {
 		type = "toggle", name = L["Be Quiet!"], desc = L["Suppress chat frame output from the Summon module."],
+		order = 6,
 		get = function() return Automaton_Summon.db.profile.quiet end,
 		set = function(v) Automaton_Summon.db.profile.quiet = v end,
 	}
@@ -85,7 +90,7 @@ Automaton_Summon.options = {
 function Automaton_Summon:OnInitialize()
 	self.db = Automaton:AcquireDBNamespace("Summon")
 	Automaton:RegisterDefaults("Summon", "profile", {
-		disabled = true,
+		disabled = false,
 		delay = true,
 		delayTime = 20,
 		combatDelay = true,

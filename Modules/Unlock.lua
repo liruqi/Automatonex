@@ -40,6 +40,7 @@ Automaton_Unlock.options = {
         type = 'toggle',
         name = L["Right-Click Unlock"],
         desc = L["Right-click locked items in bags to unlock"],
+        order = 2,
         get = function() return Automaton_Unlock.db.profile.rightClick end,
         set = function(v) Automaton_Unlock.db.profile.rightClick = v end,
     },
@@ -47,6 +48,7 @@ Automaton_Unlock.options = {
         type = 'toggle',
         name = L["Trade Frame Button"],
         desc = L["Add a lockpicking button to the trade window"],
+        order = 3,
         get = function() return Automaton_Unlock.db.profile.tradeFrameButton end,
         set = function(v) 
             Automaton_Unlock.db.profile.tradeFrameButton = v 

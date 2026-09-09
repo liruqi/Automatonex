@@ -19,6 +19,12 @@ local gatheringData = {
     ['真银矿石'] = 230, ['瑟银矿脉'] = 245, ['黑铁矿脉'] = 230, ['富瑟银矿'] = 275,
     ['宝石矿脉'] = 310, ['软泥覆盖的瑟银矿脉'] = 245, ['软泥覆盖的富瑟银矿脉'] = 275,
     ["软泥覆盖的真银矿脉"] = 230, ["软泥覆盖的秘银矿脉"] = 175,
+    ['普通树'] = 5,
+    ['亮木树'] = 125,
+    ['影木树'] = 175,
+    ['热带树'] = 225,
+    ['枯木树'] = 250,
+    ['星木树'] = 270,
 }
 
 -- 本地化（保持不变）
@@ -48,7 +54,7 @@ else
 end
 
 -- 模块内部变量（将由配置动态更新）
-local zAnchor = 3               -- 偏移模式：0禁用，1-5对应不同模式
+local zAnchor = 0               -- 偏移模式：0禁用，1-5对应不同模式
 local zOffsetX = 50              -- X偏移
 local zOffsetY = 50              -- Y偏移
 local zOrigPosX = 100            -- 系统默认位置X偏移
@@ -63,7 +69,7 @@ local zClassIcon = true          -- 是否显示职业图标
 local zShowIsPlayer = true       -- 等级行显示“玩家”字样
 local zDisplayFaction = true     -- 显示NPC声望等级
 local zTargetOfMouse = true      -- 显示对象的目标
-local zShowBar = true            -- 显示生命/法力条
+local zShowBar = false           -- 显示生命/法力条（默认关闭）
 local zShowBarText = true        -- 显示生命/法力条数值
 local zShowGatheringLevel = true -- 显示采集等级
 
@@ -121,234 +127,297 @@ Automaton_zTip.modelRotationEnabled = false
 Automaton_zTip.modelRotationSpeed = 0
 Automaton_zTip.modelLastUpdate = 0
 
--- ==================== 平铺的选项表 ====================
+-- ==================== 分类选项表 ====================
 Automaton_zTip.options = {
-    zAnchor = {
-        type = "range",
-        name = "偏移模式",
-        desc = "0=禁用偏移，1=人物跟随鼠标（非人物用默认位置），2=屏幕上方，3=全部跟随鼠标，4=屏幕上方+非人物对象右上，5=全部跟随鼠标并向上延展",
-        min = 0,
-        max = 5,
-        step = 1,
+    ["位置与偏移"] = {
+        type = "group",
+        name = "位置与偏移",
+        desc = "鼠标提示框的位置与偏移设置",
+        order = 1,
+        args = {
+            zAnchor = {
+                type = "range",
+                name = "偏移模式",
+                desc = "0=禁用偏移，1=人物跟随鼠标（非人物用默认位置），2=屏幕上方，3=全部跟随鼠标，4=屏幕上方+非人物对象右上，5=全部跟随鼠标并向上延展",
+                min = 0,
+                max = 5,
+                step = 1,
+                order = 1,
+                get = function() return Automaton_zTip.db.profile.zAnchor end,
+                set = function(v)
+                    Automaton_zTip.db.profile.zAnchor = v
+                    Automaton_zTip:UpdateConfig()
+                    if v == 0 then
+                        GameTooltip_SetDefaultAnchor = Automaton_zTip.orig_GameTooltip_SetDefaultAnchor
+                    else
+                        GameTooltip_SetDefaultAnchor = function(t, p) Automaton_zTip:SetDefaultAnchor(t, p) end
+                    end
+                end,
+            },
+            zOffsetX = {
+                type = "range",
+                name = "X偏移量",
+                desc = "水平偏移（像素）",
+                min = -200,
+                max = 200,
+                step = 1,
+                order = 2,
+                get = function() return Automaton_zTip.db.profile.zOffsetX end,
+                set = function(v) Automaton_zTip.db.profile.zOffsetX = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zOffsetY = {
+                type = "range",
+                name = "Y偏移量",
+                desc = "垂直偏移（像素）",
+                min = -200,
+                max = 200,
+                step = 1,
+                order = 3,
+                get = function() return Automaton_zTip.db.profile.zOffsetY end,
+                set = function(v) Automaton_zTip.db.profile.zOffsetY = v; Automaton_zTip:UpdateConfig() end,
+            },
+        },
+    },
+    ["缩放与外观"] = {
+        type = "group",
+        name = "缩放与外观",
+        desc = "鼠标提示框的缩放与外观设置",
         order = 2,
-        get = function() return Automaton_zTip.db.profile.zAnchor end,
-        set = function(v)
-            Automaton_zTip.db.profile.zAnchor = v
-            Automaton_zTip:UpdateConfig()
-            if v == 0 then
-                GameTooltip_SetDefaultAnchor = Automaton_zTip.orig_GameTooltip_SetDefaultAnchor
-            else
-                GameTooltip_SetDefaultAnchor = function(t, p) Automaton_zTip:SetDefaultAnchor(t, p) end
-            end
-        end,
+        args = {
+            zScale = {
+                type = "range",
+                name = "缩放比例",
+                desc = "提示框缩放比例 (0.1-2.0)",
+                min = 0.1,
+                max = 2.0,
+                step = 0.1,
+                order = 1,
+                get = function() return Automaton_zTip.db.profile.zScale end,
+                set = function(v) Automaton_zTip.db.profile.zScale = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zScaleEnabled = {
+                type = "toggle",
+                name = "启用缩放",
+                order = 2,
+                get = function() return Automaton_zTip.db.profile.zScaleEnabled end,
+                set = function(v) Automaton_zTip.db.profile.zScaleEnabled = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zGuildColorAlpha = {
+                type = "range",
+                name = "公会明暗度",
+                desc = "公会名称的透明度/亮度",
+                min = 0,
+                max = 1,
+                step = 0.01,
+                order = 3,
+                get = function() return Automaton_zTip.db.profile.zGuildColorAlpha end,
+                set = function(v) Automaton_zTip.db.profile.zGuildColorAlpha = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zGuildColorAlphaEnabled = {
+                type = "toggle",
+                name = "启用公会明暗度",
+                order = 4,
+                get = function() return Automaton_zTip.db.profile.zGuildColorAlphaEnabled end,
+                set = function(v) Automaton_zTip.db.profile.zGuildColorAlphaEnabled = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zFade = {
+                type = "toggle",
+                name = "渐隐",
+                desc = "鼠标离开时提示是否渐隐",
+                order = 5,
+                get = function() return Automaton_zTip.db.profile.zFade end,
+                set = function(v) Automaton_zTip.db.profile.zFade = v; Automaton_zTip:UpdateConfig() end,
+            },
+        },
     },
-    zOffsetX = {
-        type = "range",
-        name = "X偏移量",
-        desc = "水平偏移（像素）",
-        min = -200,
-        max = 200,
-        step = 1,
-        order = 3,
-        get = function() return Automaton_zTip.db.profile.zOffsetX end,
-        set = function(v) Automaton_zTip.db.profile.zOffsetX = v; Automaton_zTip:UpdateConfig() end,
+    separator_display = {
+        type = "header",
+        name = "显示内容",
+        order = 10,
     },
-    zOffsetY = {
-        type = "range",
-        name = "Y偏移量",
-        desc = "垂直偏移（像素）",
-        min = -200,
-        max = 200,
-        step = 1,
-        order = 4,
-        get = function() return Automaton_zTip.db.profile.zOffsetY end,
-        set = function(v) Automaton_zTip.db.profile.zOffsetY = v; Automaton_zTip:UpdateConfig() end,
+    ["单位信息"] = {
+        type = "group",
+        name = "单位信息",
+        desc = "鼠标悬停单位时提示框中显示的信息",
+        order = 20,
+        args = {
+            zDisplayPvPRank = {
+                type = "range",
+                name = "军衔显示",
+                desc = "0=不显示，1=文字，2=图标，3=两者",
+                min = 0,
+                max = 3,
+                step = 1,
+                order = 1,
+                get = function() return Automaton_zTip.db.profile.zDisplayPvPRank end,
+                set = function(v) Automaton_zTip.db.profile.zDisplayPvPRank = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zClassIcon = {
+                type = "toggle",
+                name = "职业图标",
+                order = 2,
+                get = function() return Automaton_zTip.db.profile.zClassIcon end,
+                set = function(v) Automaton_zTip.db.profile.zClassIcon = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zShowIsPlayer = {
+                type = "toggle",
+                name = "显示'玩家'字样",
+                order = 3,
+                get = function() return Automaton_zTip.db.profile.zShowIsPlayer end,
+                set = function(v) Automaton_zTip.db.profile.zShowIsPlayer = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zDisplayFaction = {
+                type = "toggle",
+                name = "显示NPC声望",
+                order = 4,
+                get = function() return Automaton_zTip.db.profile.zDisplayFaction end,
+                set = function(v) Automaton_zTip.db.profile.zDisplayFaction = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zTargetOfMouse = {
+                type = "toggle",
+                name = "显示对象的目标",
+                order = 5,
+                get = function() return Automaton_zTip.db.profile.zTargetOfMouse end,
+                set = function(v) Automaton_zTip.db.profile.zTargetOfMouse = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zShowBar = {
+                type = "toggle",
+                name = "显示法力条",
+                order = 6,
+                get = function() return Automaton_zTip.db.profile.zShowBar end,
+                set = function(v) Automaton_zTip.db.profile.zShowBar = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zShowBarText = {
+                type = "toggle",
+                name = "显示生命/法力数值",
+                order = 7,
+                get = function() return Automaton_zTip.db.profile.zShowBarText end,
+                set = function(v) Automaton_zTip.db.profile.zShowBarText = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zShowGatheringLevel = {
+                type = "toggle",
+                name = "显示采集等级",
+                order = 8,
+                get = function() return Automaton_zTip.db.profile.zShowGatheringLevel end,
+                set = function(v) Automaton_zTip.db.profile.zShowGatheringLevel = v; Automaton_zTip:UpdateConfig() end,
+            },
+        },
     },
-    zScaleEnabled = {
-        type = "toggle",
-        name = "启用缩放",
-        order = 5,
-        get = function() return Automaton_zTip.db.profile.zScaleEnabled end,
-        set = function(v) Automaton_zTip.db.profile.zScaleEnabled = v; Automaton_zTip:UpdateConfig() end,
+    ["扩展信息"] = {
+        type = "group",
+        name = "扩展信息",
+        desc = "物品、法术与目标的扩展信息显示",
+        order = 30,
+        args = {
+            zShowItemID = {
+                type = "toggle",
+                name = "显示物品ID",
+                desc = "在物品提示中显示物品ID",
+                order = 1,
+                get = function() return Automaton_zTip.db.profile.zShowItemID end,
+                set = function(v) Automaton_zTip.db.profile.zShowItemID = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zShowSpellID = {
+                type = "toggle",
+                name = "显示法术ID",
+                desc = "在法术、Buff、Debuff提示中显示法术ID，需Superwow模组",
+                order = 2,
+                get = function() return Automaton_zTip.db.profile.zShowSpellID end,
+                set = function(v) Automaton_zTip.db.profile.zShowSpellID = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zShowDamageAndSpeed = {
+                type = "toggle",
+                name = "显示目标伤害和攻速",
+                desc = "在敌对/中立非玩家单位提示中显示伤害范围和攻击速度",
+                order = 3,
+                get = function() return Automaton_zTip.db.profile.zShowDamageAndSpeed end,
+                set = function(v) Automaton_zTip.db.profile.zShowDamageAndSpeed = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zShowImpression = {
+                type = "toggle",
+                name = "显示玩家印象",
+                desc = "在玩家提示中显示印象信息（需 SpiritSenseRec灵应录支持）",
+                order = 4,
+                get = function() return Automaton_zTip.db.profile.zShowImpression end,
+                set = function(v) Automaton_zTip.db.profile.zShowImpression = v; Automaton_zTip:UpdateConfig() end,
+            },
+        },
     },
-    zScale = {
-        type = "range",
-        name = "缩放比例",
-        desc = "提示框缩放比例 (0.1-2.0)",
-        min = 0.1,
-        max = 2.0,
-        step = 0.1,
-        order = 6,
-        get = function() return Automaton_zTip.db.profile.zScale end,
-        set = function(v) Automaton_zTip.db.profile.zScale = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zGuildColorAlphaEnabled = {
-        type = "toggle",
-        name = "启用公会明暗度",
-        order = 7,
-        get = function() return Automaton_zTip.db.profile.zGuildColorAlphaEnabled end,
-        set = function(v) Automaton_zTip.db.profile.zGuildColorAlphaEnabled = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zGuildColorAlpha = {
-        type = "range",
-        name = "公会明暗度",
-        desc = "公会名称的透明度/亮度",
-        min = 0,
-        max = 1,
-        step = 0.01,
-        order = 8,
-        get = function() return Automaton_zTip.db.profile.zGuildColorAlpha end,
-        set = function(v) Automaton_zTip.db.profile.zGuildColorAlpha = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zDisplayPvPRank = {
-        type = "range",
-        name = "军衔显示",
-        desc = "0=不显示，1=文字，2=图标，3=两者",
-        min = 0,
-        max = 3,
-        step = 1,
-        get = function() return Automaton_zTip.db.profile.zDisplayPvPRank end,
-        set = function(v) Automaton_zTip.db.profile.zDisplayPvPRank = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zFade = {
-        type = "toggle",
-        name = "渐隐",
-        desc = "鼠标离开时提示是否渐隐",
-        get = function() return Automaton_zTip.db.profile.zFade end,
-        set = function(v) Automaton_zTip.db.profile.zFade = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zClassIcon = {
-        type = "toggle",
-        name = "职业图标",
-        get = function() return Automaton_zTip.db.profile.zClassIcon end,
-        set = function(v) Automaton_zTip.db.profile.zClassIcon = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zShowIsPlayer = {
-        type = "toggle",
-        name = "显示'玩家'字样",
-        get = function() return Automaton_zTip.db.profile.zShowIsPlayer end,
-        set = function(v) Automaton_zTip.db.profile.zShowIsPlayer = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zDisplayFaction = {
-        type = "toggle",
-        name = "显示NPC声望",
-        get = function() return Automaton_zTip.db.profile.zDisplayFaction end,
-        set = function(v) Automaton_zTip.db.profile.zDisplayFaction = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zTargetOfMouse = {
-        type = "toggle",
-        name = "显示对象的目标",
-        get = function() return Automaton_zTip.db.profile.zTargetOfMouse end,
-        set = function(v) Automaton_zTip.db.profile.zTargetOfMouse = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zShowBar = {
-        type = "toggle",
-        name = "显示法力条",
-        get = function() return Automaton_zTip.db.profile.zShowBar end,
-        set = function(v) Automaton_zTip.db.profile.zShowBar = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zShowBarText = {
-        type = "toggle",
-        name = "显示生命/法力数值",
-        get = function() return Automaton_zTip.db.profile.zShowBarText end,
-        set = function(v) Automaton_zTip.db.profile.zShowBarText = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zShowGatheringLevel = {
-        type = "toggle",
-        name = "显示采集等级",
-        get = function() return Automaton_zTip.db.profile.zShowGatheringLevel end,
-        set = function(v) Automaton_zTip.db.profile.zShowGatheringLevel = v; Automaton_zTip:UpdateConfig() end,
-    },
-    -- 新增选项
-    zShowItemID = {
-        type = "toggle",
-        name = "显示物品ID",
-        desc = "在物品提示中显示物品ID",
-        get = function() return Automaton_zTip.db.profile.zShowItemID end,
-        set = function(v) Automaton_zTip.db.profile.zShowItemID = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zShowSpellID = {
-        type = "toggle",
-        name = "显示法术ID",
-        desc = "在法术、Buff、Debuff提示中显示法术ID，需Superwow模组",
-        get = function() return Automaton_zTip.db.profile.zShowSpellID end,
-        set = function(v) Automaton_zTip.db.profile.zShowSpellID = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zShowDamageAndSpeed = {
-        type = "toggle",
-        name = "显示目标伤害和攻速",
-        desc = "在敌对/中立非玩家单位提示中显示伤害范围和攻击速度",
-        get = function() return Automaton_zTip.db.profile.zShowDamageAndSpeed end,
-        set = function(v) Automaton_zTip.db.profile.zShowDamageAndSpeed = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zShowImpression = {
-        type = "toggle",
-        name = "显示玩家印象",
-        desc = "在玩家提示中显示印象信息（需 SpiritSenseRec灵应录支持）",
-        get = function() return Automaton_zTip.db.profile.zShowImpression end,
-        set = function(v) Automaton_zTip.db.profile.zShowImpression = v; Automaton_zTip:UpdateConfig() end,
-    },
-    -- 3D模型选项（新增）
-    zShow3DModel = {
-        type = "toggle",
-        name = "显示3D模型",
-        desc = "在玩家提示中显示3D模型",
-        get = function() return Automaton_zTip.db.profile.zShow3DModel end,
-        set = function(v) Automaton_zTip.db.profile.zShow3DModel = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zModelSize = {
-        type = "range",
-        name = "模型大小",
-        desc = "3D模型的宽度/高度（像素）",
-        min = 50,
-        max = 300,
-        step = 1,
-        get = function() return Automaton_zTip.db.profile.zModelSize end,
-        set = function(v) Automaton_zTip.db.profile.zModelSize = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zModelPosition = {
-        type = "range",
-        name = "模型位置",
-        desc = "0=顶部，1=底部，2=左侧，3=右侧",
-        min = 0,
-        max = 3,
-        step = 1,
-        get = function() return Automaton_zTip.db.profile.zModelPosition end,
-        set = function(v) Automaton_zTip.db.profile.zModelPosition = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zModelOffsetX = {
-        type = "range",
-        name = "模型X偏移",
-        desc = "水平偏移（像素）",
-        min = -200,
-        max = 200,
-        step = 1,
-        get = function() return Automaton_zTip.db.profile.zModelOffsetX end,
-        set = function(v) Automaton_zTip.db.profile.zModelOffsetX = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zModelOffsetY = {
-        type = "range",
-        name = "模型Y偏移",
-        desc = "垂直偏移（像素）",
-        min = -200,
-        max = 200,
-        step = 1,
-        get = function() return Automaton_zTip.db.profile.zModelOffsetY end,
-        set = function(v) Automaton_zTip.db.profile.zModelOffsetY = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zModelRotation = {
-        type = "toggle",
-        name = "允许鼠标旋转",
-        desc = "鼠标悬停在模型上时可拖动旋转",
-        get = function() return Automaton_zTip.db.profile.zModelRotation end,
-        set = function(v) Automaton_zTip.db.profile.zModelRotation = v; Automaton_zTip:UpdateConfig() end,
-    },
-    zModelEdge = {
-        type = "toggle",
-        name = "边缘修正",
-        desc = "自动调整模型位置避免超出屏幕",
-        get = function() return Automaton_zTip.db.profile.zModelEdge end,
-        set = function(v) Automaton_zTip.db.profile.zModelEdge = v; Automaton_zTip:UpdateConfig() end,
+    ["3D模型"] = {
+        type = "group",
+        name = "3D模型",
+        desc = "玩家提示框中3D模型的显示设置",
+        order = 40,
+        args = {
+            zShow3DModel = {
+                type = "toggle",
+                name = "显示3D模型",
+                desc = "在玩家提示中显示3D模型",
+                order = 1,
+                get = function() return Automaton_zTip.db.profile.zShow3DModel end,
+                set = function(v) Automaton_zTip.db.profile.zShow3DModel = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zModelSize = {
+                type = "range",
+                name = "模型大小",
+                desc = "3D模型的宽度/高度（像素）",
+                min = 50,
+                max = 300,
+                step = 1,
+                order = 2,
+                get = function() return Automaton_zTip.db.profile.zModelSize end,
+                set = function(v) Automaton_zTip.db.profile.zModelSize = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zModelPosition = {
+                type = "range",
+                name = "模型位置",
+                desc = "0=顶部，1=底部，2=左侧，3=右侧",
+                min = 0,
+                max = 3,
+                step = 1,
+                order = 3,
+                get = function() return Automaton_zTip.db.profile.zModelPosition end,
+                set = function(v) Automaton_zTip.db.profile.zModelPosition = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zModelOffsetX = {
+                type = "range",
+                name = "模型X偏移",
+                desc = "水平偏移（像素）",
+                min = -200,
+                max = 200,
+                step = 1,
+                order = 4,
+                get = function() return Automaton_zTip.db.profile.zModelOffsetX end,
+                set = function(v) Automaton_zTip.db.profile.zModelOffsetX = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zModelOffsetY = {
+                type = "range",
+                name = "模型Y偏移",
+                desc = "垂直偏移（像素）",
+                min = -200,
+                max = 200,
+                step = 1,
+                order = 5,
+                get = function() return Automaton_zTip.db.profile.zModelOffsetY end,
+                set = function(v) Automaton_zTip.db.profile.zModelOffsetY = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zModelRotation = {
+                type = "toggle",
+                name = "允许鼠标旋转",
+                desc = "鼠标悬停在模型上时可拖动旋转",
+                order = 6,
+                get = function() return Automaton_zTip.db.profile.zModelRotation end,
+                set = function(v) Automaton_zTip.db.profile.zModelRotation = v; Automaton_zTip:UpdateConfig() end,
+            },
+            zModelEdge = {
+                type = "toggle",
+                name = "边缘修正",
+                desc = "自动调整模型位置避免超出屏幕",
+                order = 7,
+                get = function() return Automaton_zTip.db.profile.zModelEdge end,
+                set = function(v) Automaton_zTip.db.profile.zModelEdge = v; Automaton_zTip:UpdateConfig() end,
+            },
+        },
     },
 }
 
@@ -527,7 +596,7 @@ function Automaton_zTip:FormatUnit(unit)
             local coord = CLASS_ICON_TCOORDS[select(2, UnitClass(unit))]
             if coord then z_ClassIcon:SetTexCoord(unpack(coord)) end
             z_ClassIcon:Show()
-            text1 = "    "
+            text1 = "　" -- 一个全角空格（≈14px）给职业图标让位，宽度等同汉字，不受字体影响
         else
             z_ClassIcon:Hide()
             text1 = ""
@@ -539,7 +608,7 @@ function Automaton_zTip:FormatUnit(unit)
             RankIcon:Show()
             RankIcon:SetTexture(format("%s%02d", "Interface\\PvPRankBadges\\PvPRank", rankIndex))
             if rankIndex > 5 then RankIcon:SetAlpha(1) else RankIcon:SetAlpha(0.66) end
-            text2 = "    "
+            text2 = "　 " -- 一个全角+一个半角空格（≈21px）给军衔徽章让位，确保名字不压到徽章
         else
             RankIcon:Hide()
             text2 = ""
@@ -547,11 +616,14 @@ function Automaton_zTip:FormatUnit(unit)
 
         local titletext = UnitPVPName(unit)
         if titletext then
-            if pvpRank > 0 then titletext = string.gsub(titletext, rankName, "") end
+            if pvpRank > 0 and rankName then titletext = string.gsub(titletext, rankName, "") end
             titletext = string.gsub(titletext, UnitName(unit), "")
+            -- 去除移除军衔名/角色名后残留的空白，避免军衔与姓名之间出现长空格
+            titletext = string.gsub(titletext, "^%s*(.-)%s*$", "%1")
         else
             titletext = ""
         end
+        local titleSuffix = (titletext ~= "" and (" " .. titletext)) or ""
 
         -- [MODIFIED] 将玩家名字染为职业颜色
         local playerName = UnitName(unit)
@@ -560,11 +632,11 @@ function Automaton_zTip:FormatUnit(unit)
         playerName = format("|cff%s%s|r", classColorHex, playerName)
 
         if zDisplayPvPRank == 2 then
-            text:SetText(text1..text2..playerName..titletext)
+            text:SetText(text1..text2..playerName..titleSuffix)
         elseif pvpRank > 0 and zDisplayPvPRank >= 1 then
-            text:SetText(text1..text2..playerName.."|CFFCCCC33 ".. rankName .."|r"..titletext)
+            text:SetText(text1..text2..playerName.." |CFFCCCC33"..rankName.."|r"..titleSuffix)
         else
-            text:SetText(text1..text2..playerName..titletext)
+            text:SetText(text1..text2..playerName..titleSuffix)
         end
     end
 
@@ -1729,7 +1801,7 @@ end
 function Automaton_zTip:OnInitialize()
     self.db = Automaton:AcquireDBNamespace("zTip")
     Automaton:RegisterDefaults("zTip", "profile", {
-        zAnchor = 3,
+        zAnchor = 0, -- 偏移模式：0=禁用偏移
         zOffsetX = 50,
         zOffsetY = 50,
         zScale = 1.0,
@@ -1742,7 +1814,7 @@ function Automaton_zTip:OnInitialize()
         zShowIsPlayer = true,
         zDisplayFaction = true,
         zTargetOfMouse = true,
-        zShowBar = true,
+        zShowBar = false, -- 显示法力条（默认关闭）
         zShowBarText = true,
         zShowGatheringLevel = true,
         -- 新增默认值
@@ -1751,7 +1823,7 @@ function Automaton_zTip:OnInitialize()
         zShowDamageAndSpeed = false,
         zShowImpression = false,
         -- 3D模型默认值
-        zShow3DModel = true,
+        zShow3DModel = false,
         zModelSize = 120,
         zModelPosition = 0,
         zModelOffsetX = 0,
@@ -1763,4 +1835,13 @@ function Automaton_zTip:OnInitialize()
 
     -- 注册平铺的选项表
     self:RegisterOptions(self.options)
+
+    -- 默认值迁移 v1（2026-09-08）：偏移模式默认 0（禁用偏移）、法力条默认关闭。
+    -- zTip 为账号级 profile 存档；模块刚加入 TOC，若加入后已重载过界面，
+    -- 旧默认（zAnchor=3、zShowBar=true）会已写入存档并遮住新默认，故按版本号一次性强制写入。
+    if (self.db.profile.zTipDefaultsVersion or 0) < 1 then
+        self.db.profile.zAnchor = 0
+        self.db.profile.zShowBar = false
+        self.db.profile.zTipDefaultsVersion = 1
+    end
 end

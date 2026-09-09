@@ -38,16 +38,19 @@ Automaton_Rez.moduledesc = L["Options for accepting resurrection requests."]
 Automaton_Rez.options = {
 	persist = {
 		type = "toggle", name = L["Persist"], desc = L["With this option enabled, AutoRez will persist for every resurrection request."],
+		order = 2,
 		get = function() return Automaton_Rez.db.profile.persist end,
 		set = function(v) Automaton_Rez.db.profile.persist = v end,
 	},
 	delay = {
 		type = "toggle", name = L["Delay"], desc = L["With this option enabled, automatic resurrection accept is delayed."],
+		order = 3,
 		get = function() return Automaton_Rez.db.profile.delay end,
 		set = function(v) Automaton_Rez.db.profile.delay = v end,
 	},
 	delayTime = {
 		type = "range", name = L["Delay Time"], desc = L["Set the time, in seconds, to wait before automatically accepting resurrections."],
+		order = 4,
 		get = function() return Automaton_Rez.db.profile.delayTime end,
 		set = function(v) Automaton_Rez.db.profile.delayTime = v end,
 		min = 5,
@@ -57,6 +60,7 @@ Automaton_Rez.options = {
 	},
 	ignoreBattleRes = {
 		type = "toggle", name = L["Ignore Battle Resurrections"], desc = L["With this option enabled, resurrections from druids will not be automatically accepted."],
+		order = 5,
 		get = function() return Automaton_Rez.db.profile.ignoreBattleRes end,
 		set = function(v) Automaton_Rez.db.profile.ignoreBattleRes = v end,
 	}
